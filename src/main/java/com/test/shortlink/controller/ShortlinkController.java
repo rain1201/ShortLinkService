@@ -1,7 +1,10 @@
 package com.test.shortlink.controller;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Profile;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -11,6 +14,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.test.shortlink.service.ShortlinkService;
+import com.test.shortlink.util.Util;
+
 
 @RestController
 public class ShortlinkController {
@@ -18,6 +23,7 @@ public class ShortlinkController {
     private ShortlinkService shortlinkService;
     @Value("${app.redirect-code:302}")
     private int redirectCode;
+    private static final Logger logger = LoggerFactory.getLogger(ShortlinkController.class);
     @ExceptionHandler(Exception.class)
     public ResponseEntity<String> handleException(Exception e) {
         return ResponseEntity.status(500).body("Internal Server Error: " + e.getMessage()+e.getStackTrace().toString());
@@ -37,7 +43,7 @@ public class ShortlinkController {
     public ResponseEntity<String> redirect(@PathVariable String id) {
         // 这里可以实现根据短链接ID重定向到原始URL的逻辑
         ResponseEntity<String> response = ResponseEntity.status(redirectCode)
-                                            .header("Location", shortlinkService.redirect(id,true))
+                                            .header("Location", shortlinkService.redirect(Util.strToId(id),true))
                                             .build();
         return response;
     }
@@ -56,4 +62,12 @@ public class ShortlinkController {
     public String delete(@PathVariable String id,@RequestParam("updateCode") String updateCode) {
         return shortlinkService.delete(id, updateCode);
     }
+    @Profile("dev")
+    @PostMapping("/calcUpdateCode/{id}")
+    public String autoupdate(@PathVariable String id,@RequestParam(value = "url",defaultValue = "") String url,
+                         @RequestParam(value = "expireAfter",defaultValue = "-1") long expireAfter,
+                         @RequestParam("updateCode") String updateCode) {
+        return Util.generateUpdateCode(updateCode,Util.strToId(id)+url+expireAfter);
+    }
+
 }

@@ -30,6 +30,7 @@ springdoc:
   packages-to-scan: com.test.shortlink.controller
 app:
   redirect-code: 302
+  check-code-length: 8
 
 ---
 spring:
@@ -38,3 +39,4 @@ spring:
       on-profile: dev
 app:
   redirect-code: 200
+  check-code-length: 8

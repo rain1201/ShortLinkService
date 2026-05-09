@@ -9,6 +9,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.BeanPropertyRowMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.test.shortlink.entity.RedisKeys;
 import com.test.shortlink.entity.Shortlink;
@@ -24,26 +25,27 @@ public class ShortlinkService {
     DataSource dataSource;
     @Autowired
     JdbcTemplate jdbcTemplate;
-    @Value("${app.expire-seconds:30}")
+    @Value("${app.expire-seconds:15}")
     private int expireSeconds;
     private static final Logger logger = LoggerFactory.getLogger(ShortlinkService.class);
+    @Transactional
     public String shorten(String url,long expireAfter,String updateCode) {
         // 这里可以实现短链接生成的逻辑，例如使用哈希算法或者随机字符串
         if(!Util.isValidUrl(url)) {
             throw new IllegalArgumentException("Invalid URL");
         }
-        if(updateCode.length()>0 && !updateCode.matches("^[a-zA-Z0-9]{8,16}$")) {
+        if(updateCode.length()>0 && !updateCode.matches("^[a-zA-Z0-9]{4,16}$")) {
             throw new IllegalArgumentException("Invalid update code format");
         }
-        String idx;
+        long idx;
         try(var conn = dataSource.getConnection()) {
-            var stmt = conn.prepareStatement("SELECT idx FROM urls WHERE originalUrl = ?");
+            /*var stmt = conn.prepareStatement("SELECT idx FROM urls WHERE originalUrl = ?");
             stmt.setString(1, url);
             var rs = stmt.executeQuery();
-            if(rs.next()) return rs.getString("idx");
-            stmt = conn.prepareStatement("INSERT INTO urls (idx, originalUrl, viewCount, createdAt, expireAfter, updateCode) VALUES (?, ?, 0, UNIX_TIMESTAMP(), ?, ?)");
-            idx=Util.generateShortlink(url);
-            stmt.setString(1, idx);
+            if(rs.next()) return rs.getString("idx");*/
+            var stmt = conn.prepareStatement("INSERT INTO urls (idx, originalUrl, viewCount, createdAt, expireAfter, updateCode) VALUES (?, ?, 0, UNIX_TIMESTAMP(), ?, ?)");
+            idx=Util.generateLinkId();
+            stmt.setLong(1, idx);
             stmt.setString(2, url);
             stmt.setLong(3, expireAfter);
             stmt.setString(4, updateCode);
@@ -52,10 +54,10 @@ public class ShortlinkService {
             throw new RuntimeException(e);
         }
         redirect(idx,false);
-        return idx;
+        return Util.idToStr(idx);
     }
     
-    public String redirect(String id,boolean updateViewCount) {
+    public String redirect(long id,boolean updateViewCount) {
         String cacheKey = RedisKeys.URL_KEY_PREFIX + id;
         String cacheViewCountKey = RedisKeys.URL_VIEW_COUNT_KEY_PREFIX + id;
         String cacheExpireKey = RedisKeys.URL_EXPIRE_KEY_PREFIX + id;
@@ -68,7 +70,7 @@ public class ShortlinkService {
             if(cachedUrl != null){
                 redisCommands.get(cacheExpireKey).thenAcceptAsync((res)->{
                     var cachedExpireTime = Long.parseLong(res!=null?res:currentTime+"");
-                    redisCommands.expire(id, Long.min(cachedExpireTime-currentTime,expireSeconds));
+                    redisCommands.expire(id+"", Long.min(cachedExpireTime-currentTime,expireSeconds));
                     if(updateViewCount)redisCommands.incr(cacheViewCountKey);
                 });
                 return cachedUrl;
@@ -102,10 +104,11 @@ public class ShortlinkService {
             throw new RuntimeException(e);
         }
     }
-    public String getInfo(String id) {
-        if(id==null || id.isEmpty()) {
+    public String getInfo(String idu) {
+        if(idu==null || idu.isEmpty()) {
             throw new IllegalArgumentException("Shortlink ID cannot be empty");
         }
+        long id = Util.strToId(idu);
         if(redirect(id,false)==null) {
             throw new IllegalArgumentException("Shortlink not found");
         }
@@ -117,7 +120,8 @@ public class ShortlinkService {
         return sl.toString();
     }
 
-    public String update(String id, String url, long expireAfter, String updateCode) {
+    public String update(String idu, String url, long expireAfter, String updateCode) {
+        long id = Util.strToId(idu);
         Shortlink sl=jdbcTemplate.queryForObject("SELECT * FROM urls WHERE idx = ?", 
                                                 new BeanPropertyRowMapper<Shortlink>(Shortlink.class),id);
         if(sl==null) {
@@ -146,18 +150,21 @@ public class ShortlinkService {
         return "Shortlink updated successfully";
     }
 
-    public String delete(String id, String updateCode) {
+    public String delete(String idu, String updateCode) {
+        updateCode = updateCode.trim();
+        long id = Util.strToId(idu);
         try(var conn = dataSource.getConnection()) {
             var stmt = conn.prepareStatement("SELECT updateCode FROM urls WHERE idx = ?");
-            stmt.setString(1, id);
+            stmt.setLong(1, id);
             var rs = stmt.executeQuery();
             if(rs.next()) {
-                String realUpdateCode = rs.getString("updateCode");
+                String realUpdateCode = rs.getString("updateCode").trim();
+                logger.info("Real update code: {}, provided update code: {}", realUpdateCode, updateCode);
                 if(realUpdateCode==null || !realUpdateCode.equals(updateCode)|| realUpdateCode.isEmpty()) {
                     throw new IllegalArgumentException("Invalid update code");
                 }
                 stmt = conn.prepareStatement("DELETE FROM urls WHERE idx = ?");
-                stmt.setString(1, id);
+                stmt.setLong(1, id);
                 stmt.executeUpdate();
                 try(var redisConn = redisClient.connect()) {
                     var redisCommands = redisConn.async();

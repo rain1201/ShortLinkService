@@ -1,16 +1,16 @@
 package com.test.shortlink.entity;
 
 public class Shortlink {
-    String idx;
+    long idx;
     String originalUrl;
     long viewCount;
     long createdAt;
     long expireAfter;  
     String updateCode; 
-    public String getIdx() {
+    public long getIdx() {
         return idx;
     }
-    public void setIdx(String idx) {
+    public void setIdx(long idx) {
         this.idx = idx;
     }
     public String getOriginalUrl() {
