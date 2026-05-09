@@ -16,6 +16,7 @@ import com.test.shortlink.entity.Shortlink;
 import com.test.shortlink.util.Util;
 
 import io.lettuce.core.RedisClient;
+import io.lettuce.core.SetArgs;
 
 @Service
 public class ShortlinkService {
@@ -38,20 +39,27 @@ public class ShortlinkService {
             throw new IllegalArgumentException("Invalid update code format");
         }
         long idx;
-        try(var conn = dataSource.getConnection()) {
-            /*var stmt = conn.prepareStatement("SELECT idx FROM urls WHERE originalUrl = ?");
-            stmt.setString(1, url);
-            var rs = stmt.executeQuery();
-            if(rs.next()) return rs.getString("idx");*/
-            var stmt = conn.prepareStatement("INSERT INTO urls (idx, originalUrl, viewCount, createdAt, expireAfter, updateCode) VALUES (?, ?, 0, UNIX_TIMESTAMP(), ?, ?)");
-            idx=Util.generateLinkId();
-            stmt.setLong(1, idx);
-            stmt.setString(2, url);
-            stmt.setLong(3, expireAfter);
-            stmt.setString(4, updateCode);
-            stmt.executeUpdate();
-        } catch (Exception e) {
-            throw new RuntimeException(e);
+        try(var redisConn=redisClient.connect()){
+            var redisCommands = redisConn.sync();
+            var createLockKey = RedisKeys.URL_CREATE_LOCK_KEY_PREFIX + url + expireAfter;
+            if(!redisCommands.set(createLockKey, "1", SetArgs.Builder.nx().ex(10)).equals("OK")) {
+                throw new IllegalArgumentException("Shortlink creation is too frequent for the same URL and expireAfter combination");
+            }
+            try(var conn = dataSource.getConnection()) {
+                /*var stmt = conn.prepareStatement("SELECT idx FROM urls WHERE originalUrl = ?");
+                stmt.setString(1, url);
+                var rs = stmt.executeQuery();
+                if(rs.next()) return rs.getString("idx");*/
+                var stmt = conn.prepareStatement("INSERT INTO urls (idx, originalUrl, viewCount, createdAt, expireAfter, updateCode) VALUES (?, ?, 0, UNIX_TIMESTAMP(), ?, ?)");
+                idx=Util.generateLinkId();
+                stmt.setLong(1, idx);
+                stmt.setString(2, url);
+                stmt.setLong(3, expireAfter);
+                stmt.setString(4, updateCode);
+                stmt.executeUpdate();
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
         }
         redirect(idx,false);
         return Util.idToStr(idx);
@@ -61,23 +69,37 @@ public class ShortlinkService {
         String cacheKey = RedisKeys.URL_KEY_PREFIX + id;
         String cacheViewCountKey = RedisKeys.URL_VIEW_COUNT_KEY_PREFIX + id;
         String cacheExpireKey = RedisKeys.URL_EXPIRE_KEY_PREFIX + id;
+        String dbLockKey = RedisKeys.URL_DB_LOCK_KEY_PREFIX + id;
         long currentTime = System.currentTimeMillis()/1000; 
         long expireTime = (long)1e10;
         byte updateViewCountByte = (byte)(updateViewCount?1:0);
         try(var redisConn = redisClient.connect()) {
             var redisCommands = redisConn.async();
-            var cachedUrl = redisCommands.get(cacheKey).get();
-            if(cachedUrl != null){
-                redisCommands.get(cacheExpireKey).thenAcceptAsync((res)->{
-                    var cachedExpireTime = Long.parseLong(res!=null?res:currentTime+"");
-                    redisCommands.expire(id+"", Long.min(cachedExpireTime-currentTime,expireSeconds));
-                    if(updateViewCount)redisCommands.incr(cacheViewCountKey);
-                });
-                return cachedUrl;
-            } 
+            while(true) {
+                var cachedUrl = redisCommands.get(cacheKey).get();
+                if(cachedUrl != null){
+                    redisCommands.get(cacheExpireKey).thenAcceptAsync((res)->{
+                        var cachedExpireTime = Long.parseLong(res!=null?res:currentTime+"");
+                        redisCommands.expire(id+"", Long.min(cachedExpireTime-currentTime,expireSeconds));
+                        if(updateViewCount)redisCommands.incr(cacheViewCountKey);
+                    });
+                    return cachedUrl;
+                }
+                if(redisCommands.setnx(dbLockKey, "1") .get()) {
+                    break;
+                }else{
+                    Thread.sleep(50);
+                }
+            }
             try(var conn = dataSource.getConnection()) {
-                Shortlink link = jdbcTemplate.queryForObject("SELECT * FROM urls WHERE idx = ?",
+                Shortlink link = null;
+                try{
+                    link= jdbcTemplate.queryForObject("SELECT * FROM urls WHERE idx = ?",
                                                         new BeanPropertyRowMapper<Shortlink>(Shortlink.class),id);
+                }catch(Exception e) {
+                    // link保持为null
+                    throw e instanceof RuntimeException? (RuntimeException)e : new RuntimeException(e);
+                }
                 var redisCommandsAsync = redisConn.async();
                 if(link!=null) {
                     if(link.getExpireAfter()>0) {
@@ -98,10 +120,14 @@ public class ShortlinkService {
                     throw new IllegalArgumentException("Shortlink not found");
                 }
             } catch (Exception e) {
-                throw new RuntimeException(e);
+                throw e instanceof RuntimeException? (RuntimeException)e : new RuntimeException(e);
+            } finally {
+                redisCommands.del(dbLockKey);
             }
-        } catch (Exception e) {
-            throw new RuntimeException(e);
+        }catch (IllegalArgumentException e) {
+            throw e;
+        }catch (Exception e) {
+            throw e instanceof RuntimeException? (RuntimeException)e : new RuntimeException(e);
         }
     }
     public String getInfo(String idu) {
@@ -112,12 +138,13 @@ public class ShortlinkService {
         if(redirect(id,false)==null) {
             throw new IllegalArgumentException("Shortlink not found");
         }
-        Shortlink sl=jdbcTemplate.queryForObject("SELECT * FROM urls WHERE idx = ?", 
+        try{
+            Shortlink sl=jdbcTemplate.queryForObject("SELECT * FROM urls WHERE idx = ?", 
                                                 new BeanPropertyRowMapper<Shortlink>(Shortlink.class),id);
-        if(sl==null) {
+            return sl.toString();
+        }catch(Exception e) {
             throw new IllegalArgumentException("Shortlink not found");
         }
-        return sl.toString();
     }
 
     public String update(String idu, String url, long expireAfter, String updateCode) {
@@ -145,7 +172,7 @@ public class ShortlinkService {
             var redisCommands = redisConn.async();
             redisCommands.expire(RedisKeys.URL_KEY_PREFIX + id,0);
         } catch (Exception e) {
-            throw new RuntimeException(e);
+            throw e instanceof RuntimeException? (RuntimeException)e : new RuntimeException(e);
         }
         return "Shortlink updated successfully";
     }
@@ -178,8 +205,11 @@ public class ShortlinkService {
             }else {
                 throw new IllegalArgumentException("Shortlink not found");
             }
+        }catch (IllegalArgumentException e) {
+            throw e;
+
         } catch (Exception e) {
-            throw new RuntimeException(e);
+            throw e instanceof RuntimeException? (RuntimeException)e : new RuntimeException(e);
         }
     }
 }
