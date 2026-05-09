@@ -1,9 +1,6 @@
 package com.test.shortlink.service;
 
 import com.test.shortlink.entity.RedisKeys;
-import io.lettuce.core.RedisClient;
-import io.lettuce.core.api.StatefulRedisConnection;
-import io.lettuce.core.api.sync.RedisCommands;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -11,6 +8,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.connection.DefaultMessage;
 import org.springframework.data.redis.connection.Message;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.data.redis.listener.RedisMessageListenerContainer;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -31,13 +30,10 @@ class RedisExpireListenerTest {
     private DataSource dataSource;
 
     @Mock
-    private RedisClient redisClient;
+    private StringRedisTemplate stringRedisTemplate;
 
     @Mock
-    private StatefulRedisConnection<String, String> redisConnection;
-
-    @Mock
-    private RedisCommands<String, String> redisCommands;
+    private ValueOperations<String, String> redisCommands;
 
     @Mock
     private Connection dbConnection;
@@ -45,17 +41,16 @@ class RedisExpireListenerTest {
     @Mock
     private PreparedStatement preparedStatement;
 
-    // 注意这里去掉了 @InjectMocks，改为手动初始化
     private RedisExpireListener redisExpireListener;
 
     @BeforeEach
     void setUp() {
-        // 1. 手动通过构造函数实例化，满足 Spring 父类的非空要求
+        // 1. 初始化 Listener
         redisExpireListener = new RedisExpireListener(redisMessageListenerContainer);
         
-        // 2. 强行把 @Autowired 的字段塞进去，绕过 Mockito 的注入缺陷
+        // 2. 注入依赖 (注意：这里不再放置 when(...) 打桩代码)
         ReflectionTestUtils.setField(redisExpireListener, "dataSource", dataSource);
-        ReflectionTestUtils.setField(redisExpireListener, "redisClient", redisClient);
+        ReflectionTestUtils.setField(redisExpireListener, "stringRedisTemplate", stringRedisTemplate);
     }
 
     @Test
@@ -64,22 +59,22 @@ class RedisExpireListenerTest {
         String expiredKeyName = RedisKeys.URL_KEY_PREFIX + testId;
         Message message = new DefaultMessage(new byte[0], expiredKeyName.getBytes());
 
-        // Mock Redis
-        when(redisClient.connect()).thenReturn(redisConnection);
-        when(redisConnection.sync()).thenReturn(redisCommands);
-        when(redisCommands.getdel(RedisKeys.URL_VIEW_COUNT_KEY_PREFIX + testId)).thenReturn("50");
+        // 修复点：将具体测试用例才会用到的 Mock 移入方法内部
+        when(stringRedisTemplate.delete(anyString())).thenReturn(true);
+        when(stringRedisTemplate.opsForValue()).thenReturn(redisCommands);
+        when(redisCommands.getAndDelete(anyString())).thenReturn("50");
 
-        // Mock Database
+        // 针对当前用例打桩 DB 行为
         when(dataSource.getConnection()).thenReturn(dbConnection);
         when(dbConnection.prepareStatement(anyString())).thenReturn(preparedStatement);
         when(preparedStatement.executeUpdate()).thenReturn(1);
 
-        // 执行监听事件
+        // 执行被测方法
         redisExpireListener.doHandleMessage(message);
 
-        // 验证 Redis 取出了 viewCount 且清除了 expireKey
-        verify(redisCommands).getdel(RedisKeys.URL_VIEW_COUNT_KEY_PREFIX + testId);
-        verify(redisCommands).getdel(RedisKeys.URL_EXPIRE_KEY_PREFIX + testId);
+        // 验证交互
+        verify(redisCommands).getAndDelete(RedisKeys.URL_VIEW_COUNT_KEY_PREFIX + testId);
+        verify(stringRedisTemplate).delete(RedisKeys.URL_EXPIRE_KEY_PREFIX + testId);
 
         // 验证执行了数据库更新语句
         verify(preparedStatement).setString(1, "50");
@@ -93,10 +88,11 @@ class RedisExpireListenerTest {
         // 如果过期的不是短链接 URL Key，不应该执行任何逻辑
         Message message = new DefaultMessage(new byte[0], "some:other:key".getBytes());
 
+        // 因为这里没有多余的 when() 打桩，Mockito 不会再抛出 UnnecessaryStubbingException
         redisExpireListener.doHandleMessage(message);
 
-        // 验证没有去连接 Redis 和 DB
-        verify(redisClient, never()).connect();
+        // 验证没有对 Redis 缓存和 DB 产生任何交互
+        verifyNoInteractions(stringRedisTemplate);
         verifyNoInteractions(dataSource);
     }
 }
