@@ -1,12 +1,14 @@
 package com.test.shortlink.service;
 
 import com.test.shortlink.entity.Shortlink;
+import com.test.shortlink.repository.ShortlinkRepository;
 import com.test.shortlink.util.Util;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
@@ -29,6 +31,7 @@ import static org.mockito.Mockito.*;
 class ShortlinkServiceTest {
 
     @InjectMocks
+    @Spy
     private ShortlinkService shortlinkService;
 
     @Mock
@@ -48,6 +51,9 @@ class ShortlinkServiceTest {
 
     @Mock
     private PreparedStatement preparedStatement;
+
+    @Mock
+    private ShortlinkRepository shortlinkRepository;
 
     @Mock
     private ResultSet resultSet;
@@ -79,22 +85,20 @@ class ShortlinkServiceTest {
         String updateCode = "code1234";
 
         // Mock DB 插入
-        when(dataSource.getConnection()).thenReturn(dbConnection);
-        when(dbConnection.prepareStatement(anyString())).thenReturn(preparedStatement);
-        when(preparedStatement.executeUpdate()).thenReturn(1);
+        when(shortlinkRepository.save(any(Shortlink.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         // Mock DB 查询 (模拟 redirect 缓存未命中时的查库)
         Shortlink mockLink = new Shortlink();
         mockLink.setOriginalUrl(originalUrl);
         mockLink.setExpireAfter(-1);
-        lenient().when(jdbcTemplate.queryForObject(anyString(), any(BeanPropertyRowMapper.class), anyLong())).thenReturn(mockLink);
+        lenient().when(shortlinkRepository.findById(anyLong())).thenReturn(java.util.Optional.of(mockLink));
 
         String shortId = shortlinkService.shorten(originalUrl, expireAfter, updateCode);
 
         assertNotNull(shortId);
         // 验证生成时成功获取了创建锁
         verify(valueOperations).setIfAbsent(contains("createLock"), eq("1"), any(Duration.class));
-        verify(preparedStatement, times(1)).executeUpdate();
+        verify(shortlinkRepository, times(1)).save(any(Shortlink.class));
     }
 
     @Test
@@ -138,6 +142,7 @@ class ShortlinkServiceTest {
         // 模拟缓存未命中
         when(valueOperations.get(contains("shortlink:url:"))).thenReturn(null);
         // 模拟 DB 锁被其他线程一直占用（重试5次均失败）
+        when(valueOperations.setIfAbsent(contains("dblock"), eq("1"), any(Duration.class))).thenReturn(false);
         Exception exception = assertThrows(IllegalArgumentException.class, () -> {
             shortlinkService.redirect(id, true);
         });
@@ -164,12 +169,11 @@ class ShortlinkServiceTest {
         // 反推计算合法的 UpdateCode
         var generatedUpdateCode = Util.generateUpdateCode(realUpdateCode, 123L + url + expireAfter);
 
-        when(jdbcTemplate.queryForObject(anyString(), any(BeanPropertyRowMapper.class), anyLong())).thenReturn(mockLink);
-
+        when(shortlinkRepository.findById(anyLong())).thenReturn(java.util.Optional.of(mockLink));
         String result = shortlinkService.update(idStr, url, expireAfter, generatedUpdateCode);
 
         assertEquals("Shortlink updated successfully", result);
-        verify(jdbcTemplate).update(anyString(), anyString(), anyLong(), anyLong());
+        verify(shortlinkRepository).saveAndFlush(any(Shortlink.class));
         // 验证缓存被设置为了立刻过期（清理缓存）
         verify(stringRedisTemplate).expire(contains("shortlink:url:"), eq(Duration.ofSeconds(0)));
     }
@@ -180,12 +184,16 @@ class ShortlinkServiceTest {
         String realUpdateCode = "secret123";
 
         // Mock 数据库连接
+        when(shortlinkRepository.findById(anyLong())).thenReturn(java.util.Optional.of(new Shortlink(){{
+            setUpdateCode(realUpdateCode);
+        }}));
         when(dataSource.getConnection()).thenReturn(dbConnection);
-        when(dbConnection.prepareStatement(anyString())).thenReturn(preparedStatement);
+        /*when(dbConnection.prepareStatement(anyString())).thenReturn(preparedStatement);
         when(preparedStatement.executeQuery()).thenReturn(resultSet);
         when(resultSet.next()).thenReturn(true);
         when(resultSet.getString("updateCode")).thenReturn(realUpdateCode);
-        when(preparedStatement.executeUpdate()).thenReturn(1);
+        when(preparedStatement.executeUpdate()).thenReturn(1);*/
+        doNothing().when(shortlinkRepository).deleteById(anyLong());
 
         String result = shortlinkService.delete(idStr, realUpdateCode);
 

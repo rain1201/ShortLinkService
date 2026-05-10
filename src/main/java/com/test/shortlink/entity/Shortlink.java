@@ -1,11 +1,20 @@
 package com.test.shortlink.entity;
 
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+
+@Entity
+@Table(name = "urls")
 public class Shortlink {
+    @Id
     long idx;
     String originalUrl;
     long viewCount;
     long createdAt;
-    long expireAfter;  
+    long expireAfter; 
+    @Column(length = 16) 
     String updateCode; 
     public long getIdx() {
         return idx;

@@ -16,10 +16,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.test.shortlink.entity.RedisKeys;
 import com.test.shortlink.entity.Shortlink;
+import com.test.shortlink.repository.ShortlinkRepository;
 import com.test.shortlink.util.Util;
 
 import io.lettuce.core.RedisClient;
-import io.lettuce.core.SetArgs;
 
 @Service
 public class ShortlinkService {
@@ -31,6 +31,8 @@ public class ShortlinkService {
     JdbcTemplate jdbcTemplate;
     @Autowired
     StringRedisTemplate stringRedisTemplate;
+    @Autowired
+    private ShortlinkRepository shortlinkRepository;
     @Value("${app.expire-seconds:15}")
     private int expireSeconds;
     private static final Logger logger = LoggerFactory.getLogger(ShortlinkService.class);
@@ -48,18 +50,17 @@ public class ShortlinkService {
         if(!stringRedisTemplate.opsForValue().setIfAbsent(createLockKey, "1", java.time.Duration.ofSeconds(10))) {
             throw new IllegalArgumentException("Shortlink creation is too frequent for the same URL and expireAfter combination");
         }
-        try(var conn = dataSource.getConnection()) {
-            var stmt = conn.prepareStatement("INSERT INTO urls (idx, originalUrl, viewCount, createdAt, expireAfter, updateCode) VALUES (?, ?, 0, UNIX_TIMESTAMP(), ?, ?)");
-            idx=Util.generateLinkId();
-            stmt.setLong(1, idx);
-            stmt.setString(2, url);
-            stmt.setLong(3, expireAfter);
-            stmt.setString(4, updateCode);
-            stmt.executeUpdate();
-        } catch (Exception e) {
-            throw new RuntimeException(e);
+        Shortlink shortlink = new Shortlink();
+        idx=Util.generateLinkId();
+        shortlink.setIdx(idx);
+        shortlink.setOriginalUrl(url);
+        shortlink.setExpireAfter(expireAfter);
+        shortlink.setUpdateCode(updateCode);
+        try {
+            shortlinkRepository.save(shortlink);
+        }catch(Exception e) {
+            throw e instanceof RuntimeException? (RuntimeException)e : new RuntimeException(e);
         }
-    
         redirect(idx,false);
         return Util.idToStr(idx);
     }
@@ -102,42 +103,43 @@ public class ShortlinkService {
             if(retryCount>=5) {
                 throw new IllegalArgumentException("Shortlink is being accessed too frequently, please try again later");
             }
-            try(var conn = dataSource.getConnection()) {
-                Shortlink link = null;
-                try{
-                    link= jdbcTemplate.queryForObject("SELECT * FROM urls WHERE idx = ?",
-                                                        new BeanPropertyRowMapper<Shortlink>(Shortlink.class),id);
-                }catch(Exception e) {
-                    // link保持为null
-                    throw e instanceof RuntimeException? (RuntimeException)e : new RuntimeException(e);
-                }
-                if(link!=null) {
-                    if(link.getExpireAfter()>0) {
-                        if(link.getCreatedAt()+link.getExpireAfter()<currentTime) {
-                            throw new IllegalArgumentException("Shortlink has expired");
-                        }
-                        expireTime=link.getCreatedAt()+link.getExpireAfter();
-                    }
-                    String url = link.getOriginalUrl();
-                    stringRedisTemplate.expire(cacheKey, java.time.Duration.ofSeconds(Long.min(expireTime-currentTime,expireSeconds)));
-                    stringRedisTemplate.opsForValue().set(cacheViewCountKey, link.getViewCount()+updateViewCountByte+"");
-                    stringRedisTemplate.opsForValue().set(cacheExpireKey, expireTime+"");
-                    return url;
-                }else {
-                    stringRedisTemplate.expire(cacheKey, java.time.Duration.ofSeconds(expireSeconds));
-                    stringRedisTemplate.opsForValue().set(cacheViewCountKey, "-9999");
-                    stringRedisTemplate.opsForValue().set(cacheExpireKey, currentTime+expireSeconds+"");
-                    throw new IllegalArgumentException("Shortlink not found");
-                }
-            } catch (Exception e) {
+        
+            Shortlink link = null;
+            
+            link = shortlinkRepository.findById(id).get();
+            
+            /*try{
+                link= jdbcTemplate.queryForObject("SELECT * FROM urls WHERE idx = ?",
+                                                    new BeanPropertyRowMapper<Shortlink>(Shortlink.class),id);
+            }catch(Exception e) {
+                // link保持为null
                 throw e instanceof RuntimeException? (RuntimeException)e : new RuntimeException(e);
-            } finally {
-                stringRedisTemplate.delete(dbLockKey);
+            }*/
+            if(link!=null) {
+                if(link.getExpireAfter()>0) {
+                    if(link.getCreatedAt()+link.getExpireAfter()<currentTime) {
+                        throw new IllegalArgumentException("Shortlink has expired");
+                    }
+                    expireTime=link.getCreatedAt()+link.getExpireAfter();
+                }
+                String url = link.getOriginalUrl();
+                stringRedisTemplate.expire(cacheKey, java.time.Duration.ofSeconds(Long.min(expireTime-currentTime,expireSeconds)));
+                stringRedisTemplate.opsForValue().set(cacheViewCountKey, link.getViewCount()+updateViewCountByte+"");
+                stringRedisTemplate.opsForValue().set(cacheExpireKey, expireTime+"");
+                return url;
+            }else {
+                stringRedisTemplate.expire(cacheKey, java.time.Duration.ofSeconds(expireSeconds));
+                stringRedisTemplate.opsForValue().set(cacheViewCountKey, "-9999");
+                stringRedisTemplate.opsForValue().set(cacheExpireKey, currentTime+expireSeconds+"");
+                throw new IllegalArgumentException("Shortlink not found");
             }
+        
         }catch (IllegalArgumentException e) {
             throw e;
         }catch (Exception e) {
             throw e instanceof RuntimeException? (RuntimeException)e : new RuntimeException(e);
+        }finally {
+            stringRedisTemplate.delete(dbLockKey);
         }
     }
     public String getInfo(String idu) {
@@ -145,14 +147,10 @@ public class ShortlinkService {
             throw new IllegalArgumentException("Shortlink ID cannot be empty");
         }
         long id = Util.strToId(idu);
+        redirect(id,false);
+        
         try{
-            redirect(id,false);
-        }catch(Exception e) {
-            throw new IllegalArgumentException("Shortlink not found");
-        }
-        try{
-            Shortlink sl=jdbcTemplate.queryForObject("SELECT * FROM urls WHERE idx = ?", 
-                                                new BeanPropertyRowMapper<Shortlink>(Shortlink.class),id);
+            Shortlink sl= shortlinkRepository.findById(id).get();
             return sl.toString();
         }catch(Exception e) {
             throw new IllegalArgumentException("Shortlink not found");
@@ -161,8 +159,7 @@ public class ShortlinkService {
 
     public String update(String idu, String url, long expireAfter, String updateCode) {
         long id = Util.strToId(idu);
-        Shortlink sl=jdbcTemplate.queryForObject("SELECT * FROM urls WHERE idx = ?", 
-                                                new BeanPropertyRowMapper<Shortlink>(Shortlink.class),id);
+        Shortlink sl= shortlinkRepository.findById(id).get();
         if(sl==null) {
             throw new IllegalArgumentException("Shortlink not found");
         }
@@ -179,8 +176,7 @@ public class ShortlinkService {
         if(expireAfter>0) {
             sl.setExpireAfter(expireAfter+System.currentTimeMillis()/1000-sl.getCreatedAt());
         }
-        jdbcTemplate.update("UPDATE urls SET originalUrl=?, expireAfter=? WHERE idx=?", sl.getOriginalUrl(), sl.getExpireAfter(), id);
-        
+        shortlinkRepository.saveAndFlush(sl);
         stringRedisTemplate.expire(RedisKeys.URL_KEY_PREFIX + id, java.time.Duration.ofSeconds(0));
         
         return "Shortlink updated successfully";
@@ -190,18 +186,20 @@ public class ShortlinkService {
         updateCode = updateCode.trim();
         long id = Util.strToId(idu);
         try(var conn = dataSource.getConnection()) {
-            var stmt = conn.prepareStatement("SELECT updateCode FROM urls WHERE idx = ?");
+            Shortlink sl = shortlinkRepository.findById(id).get();
+            /*var stmt = conn.prepareStatement("SELECT updateCode FROM urls WHERE idx = ?");
             stmt.setLong(1, id);
-            var rs = stmt.executeQuery();
-            if(rs.next()) {
-                String realUpdateCode = rs.getString("updateCode").trim();
+            var rs = stmt.executeQuery();*/
+            if(sl!=null) {
+                String realUpdateCode = sl.getUpdateCode();
                 logger.info("Real update code: {}, provided update code: {}", realUpdateCode, updateCode);
                 if(realUpdateCode==null || !realUpdateCode.equals(updateCode)|| realUpdateCode.isEmpty()) {
                     throw new IllegalArgumentException("Invalid update code");
                 }
-                stmt = conn.prepareStatement("DELETE FROM urls WHERE idx = ?");
+                /*stmt = conn.prepareStatement("DELETE FROM urls WHERE idx = ?");
                 stmt.setLong(1, id);
-                stmt.executeUpdate();
+                stmt.executeUpdate();*/
+                shortlinkRepository.deleteById(id);
                 stringRedisTemplate.delete(RedisKeys.URL_KEY_PREFIX + id);
                 stringRedisTemplate.delete(RedisKeys.URL_VIEW_COUNT_KEY_PREFIX + id);
                 stringRedisTemplate.delete(RedisKeys.URL_EXPIRE_KEY_PREFIX + id);
