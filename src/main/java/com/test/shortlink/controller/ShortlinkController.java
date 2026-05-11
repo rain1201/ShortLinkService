@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.test.shortlink.anno.PowCaptcha;
 import com.test.shortlink.service.ShortlinkService;
 import com.test.shortlink.util.Util;
 
@@ -40,9 +41,12 @@ public class ShortlinkController {
         return "index";
     }
     @PostMapping("/shorten")
+    @PowCaptcha(paramNames={"url","expireAfter"},captchaParamName="captcha",timeParamName="time")
     public String shorten(@RequestParam("url") String url,
                         @RequestParam(value="expireAfter",defaultValue="1000000000") long expireAfter,
-                        @RequestParam(value="updateCode",defaultValue="") String updateCode) {
+                        @RequestParam(value="updateCode",defaultValue="") String updateCode,
+                        @RequestParam("captcha") String captcha,
+                        @RequestParam("time") long time) {
         return shortlinkService.shorten(url,expireAfter,updateCode);
     }
     //@Operation(summary = "重定向", description = "返回注册页面的HTML视图")

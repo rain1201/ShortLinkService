@@ -5,7 +5,6 @@ import java.util.Base64;
 import java.util.HexFormat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.stereotype.Component;
@@ -27,13 +26,7 @@ public class Util {
     private static SnowFlakeId idGenerator = new SnowFlakeId(workerId, datacenterId);
     public static long generateLinkId() {
         return idGenerator.nextId();
-    }   
-    /*public static String generateShortlink(String url) {
-        Base64.Encoder encoder = Base64.getUrlEncoder().withoutPadding();
-        Long id = idGenerator.nextId();
-        logger.info("Generated ID: {}", id);
-        return encoder.encodeToString(longToBytes(id));
-    }*/
+    }
     public static boolean isValidUrl(String url){
         String re="^(https|http)\\:\\/\\/[a-zA-Z0-9\\-\\.]+\\.[a-zA-Z0-9]{1,}(:[0-9]{1,5})?(\\/[\\S]*)?$"; 
         return url.matches(re);
@@ -71,6 +64,15 @@ public class Util {
             return true;
         }catch(Exception e){
             throw new RuntimeException(e);
+        }
+    }
+    public static String generatePowCaptcha(String str) {
+        int nonce=0;
+        while(true) {
+            if(powCaptchaCheck(str+nonce, "")) {
+                return String.valueOf(nonce);
+            }
+            nonce++;
         }
     }
     public static byte[] longToBytes(long x) {

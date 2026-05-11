@@ -11,7 +11,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.jdbc.core.BeanPropertyRowMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -51,9 +50,9 @@ public class ShortlinkService {
             throw new IllegalArgumentException("Invalid update code format");
         }
         long idx;
-        var createLockKey = RedisKeys.URL_CREATE_LOCK_KEY_PREFIX + url + expireAfter;
+        var createLockKey = RedisKeys.URL_CREATE_LOCK_KEY_PREFIX + url;
         if(!stringRedisTemplate.opsForValue().setIfAbsent(createLockKey, "1", java.time.Duration.ofSeconds(10))) {
-            throw new IllegalArgumentException("Shortlink creation is too frequent for the same URL and expireAfter combination");
+            throw new IllegalArgumentException("Shortlink creation is too frequent for the same URL");
         }
         Shortlink shortlink = new Shortlink();
         idx=Util.generateLinkId();
