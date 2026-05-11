@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -25,8 +26,14 @@ public class ShortlinkController {
     private int redirectCode;
     private static final Logger logger = LoggerFactory.getLogger(ShortlinkController.class);
     @ExceptionHandler(Exception.class)
+    @Profile("dev")
     public ResponseEntity<String> handleException(Exception e) {
         return ResponseEntity.status(500).body("Internal Server Error: " + e.getMessage()+e.getStackTrace().toString());
+    }
+    @ExceptionHandler(Exception.class)
+    @Profile("!dev")
+    public ResponseEntity<String> handleExceptionProd(Exception e) {
+        return ResponseEntity.status(500).body("Internal Server Error");
     }
     @GetMapping("/index")
     public String index() {
@@ -40,7 +47,8 @@ public class ShortlinkController {
     }
     //@Operation(summary = "重定向", description = "返回注册页面的HTML视图")
     @GetMapping("/{id}")
-    public ResponseEntity<String> redirect(@PathVariable String id) {
+    public ResponseEntity<String> redirect(@PathVariable String id,@RequestHeader(value = "User-Agent", defaultValue = "") String userAgent,
+                                           @RequestHeader(value = "X-Forwarded-For", defaultValue = "") String xForwardedFor) {
         // 这里可以实现根据短链接ID重定向到原始URL的逻辑
         ResponseEntity<String> response = ResponseEntity.status(redirectCode)
                                             .header("Location", shortlinkService.redirect(Util.strToId(id),true))

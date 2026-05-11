@@ -1,12 +1,14 @@
 package com.test.shortlink.service;
 
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 
 import javax.sql.DataSource;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.BeanPropertyRowMapper;
@@ -33,6 +35,9 @@ public class ShortlinkService {
     StringRedisTemplate stringRedisTemplate;
     @Autowired
     private ShortlinkRepository shortlinkRepository;
+    @Autowired
+    @Qualifier("asyncExecutor")
+    private Executor asyncExecutor;
     @Value("${app.expire-seconds:15}")
     private int expireSeconds;
     private static final Logger logger = LoggerFactory.getLogger(ShortlinkService.class);
@@ -75,7 +80,7 @@ public class ShortlinkService {
             stringRedisTemplate.expire(id+"", java.time.Duration.ofSeconds(Long.min(cachedExpireTime-currentTime,expireSeconds)));
             stringRedisTemplate.opsForValue().increment(cacheViewCountKey);
             return 0L;
-        });
+        }, asyncExecutor);
     }
     
     public String redirect(long id,boolean updateViewCount) {

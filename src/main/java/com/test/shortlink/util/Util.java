@@ -19,6 +19,10 @@ public class Util {
     private static long workerId=0;
     @Value("${app.datacenter-id:0}")
     private static long datacenterId=0;
+    @Value("${app.pow-difficulty:20}")
+    private static int powDifficulty=20;
+    @Value("${app.captcha-expire-seconds:300}")
+    public static int captchaExpireSeconds=300;
     private static final Logger logger=LoggerFactory.getLogger(Util.class.getName());
     private static SnowFlakeId idGenerator = new SnowFlakeId(workerId, datacenterId);
     public static long generateLinkId() {
@@ -48,6 +52,23 @@ public class Util {
             String expectedCode= HexFormat.of().formatHex(md.digest());
             logger.info("Generated update code: {},[{}]", expectedCode,(realCode+updateString).trim());
             return expectedCode.substring(0, checkCodeLength);
+        }catch(Exception e){
+            throw new RuntimeException(e);
+        }
+    }
+    public static boolean powCaptchaCheck(String str,String Captcha) {
+        try{
+            MessageDigest md=MessageDigest.getInstance("SHA-1");
+            md.reset();
+            String input=str.trim();
+            md.update(input.getBytes("UTF-8"));
+            byte[] hash=md.digest();
+            for(int i=0;i<Integer.min(powDifficulty, hash.length);i++) {
+                if(hash[i]!=0) {
+                    return false;
+                }
+            }
+            return true;
         }catch(Exception e){
             throw new RuntimeException(e);
         }
