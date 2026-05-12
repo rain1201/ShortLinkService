@@ -1,4 +1,4 @@
-package com.test.shortlink.service;
+package com.test.shortlink.conf;
 
 import javax.sql.DataSource;
 

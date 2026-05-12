@@ -22,11 +22,12 @@ public class PowCaptchaAspect {
         String[] paramNames = methodSignature.getParameterNames();
         String str = null,captcha=null;
         boolean foundTime=false;
+        long time =0;
         for(int i=0;i<paramNames.length;i++) {
             if(paramNames[i].equals(powCaptcha.timeParamName())) {
                 if(args[i] instanceof Long) {
                     foundTime=true;
-                    long time=(Long)args[i];
+                    time=(Long)args[i];
                     if(Math.abs(System.currentTimeMillis()/1000-time)>Util.captchaExpireSeconds) {
                         throw new IllegalArgumentException("Captcha expired");
                     }
@@ -63,7 +64,7 @@ public class PowCaptchaAspect {
             }
         }
         logger.info("Checking captcha for method {}, parameters: {}", methodSignature.getMethod().getName(), str);
-        if(!Util.powCaptchaCheck(str, captcha)) {
+        if(!Util.powCaptchaCheck(str+time, captcha)) {
             throw new IllegalArgumentException("Invalid captcha");
         }
     }

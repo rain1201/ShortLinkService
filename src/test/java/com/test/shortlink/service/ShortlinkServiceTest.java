@@ -3,6 +3,7 @@ package com.test.shortlink.service;
 import com.test.shortlink.entity.Shortlink;
 import com.test.shortlink.repository.ShortlinkRepository;
 import com.test.shortlink.util.Util;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -12,7 +13,6 @@ import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
-import org.springframework.jdbc.core.BeanPropertyRowMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -21,7 +21,8 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.time.Duration;
-import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -57,6 +58,9 @@ class ShortlinkServiceTest {
 
     @Mock
     private ResultSet resultSet;
+
+    @Spy // 或者使用真实的线程池
+    private Executor myExecutor = Executors.newFixedThreadPool(1);
 
     @BeforeEach
     void setUp() throws Exception {
@@ -110,7 +114,7 @@ class ShortlinkServiceTest {
             shortlinkService.shorten("http://example.com", 1000, "code12");
         });
         
-        assertEquals("Shortlink creation is too frequent for the same URL and expireAfter combination", exception.getMessage());
+        assertEquals("Shortlink creation is too frequent for the same URL", exception.getMessage());
     }
 
     @Test
@@ -213,5 +217,95 @@ class ShortlinkServiceTest {
         });
 
         assertEquals("Shortlink not found", exception.getMessage());
+    }
+
+    @Test
+    void testRedirect_DbHit_ValidLink() throws Exception {
+        long id = 123L;
+        String originalUrl = "http://db-hit.com";
+
+        // 缓存未命中，获取了DB锁
+        when(valueOperations.get(contains("shortlink:url:"))).thenReturn(null);
+        when(valueOperations.setIfAbsent(contains("dblock"), eq("1"), any(Duration.class))).thenReturn(true);
+
+        // Mock DB 查询返回有效数据
+        Shortlink mockLink = new Shortlink();
+        mockLink.setOriginalUrl(originalUrl);
+        mockLink.setExpireAfter(-1); // 永不过期
+        mockLink.setViewCount(10);
+        when(shortlinkRepository.findById(id)).thenReturn(java.util.Optional.of(mockLink));
+
+        String result = shortlinkService.redirect(id, false);
+
+        assertEquals(originalUrl, result);
+        // 验证查库后重新写入缓存
+        verify(stringRedisTemplate).expire(contains("shortlink:url:"), any(Duration.class));
+        verify(valueOperations).set(contains("viewCount"), eq("10")); // 因为传入的是 updateViewCount=false
+    }
+
+    @Test
+    void testRedirect_DbHit_ExpiredLink() throws Exception {
+        long id = 123L;
+        // 缓存未命中，获取了DB锁
+        when(valueOperations.get(contains("shortlink:url:"))).thenReturn(null);
+        when(valueOperations.setIfAbsent(contains("dblock"), eq("1"), any(Duration.class))).thenReturn(true);
+
+        Shortlink mockLink = new Shortlink();
+        mockLink.setOriginalUrl("http://expired.com");
+        mockLink.setCreatedAt(System.currentTimeMillis() / 1000 - 10000); // 10000秒前创建
+        mockLink.setExpireAfter(100); // 100秒后过期 (已经过期)
+        when(shortlinkRepository.findById(id)).thenReturn(java.util.Optional.of(mockLink));
+
+        Exception exception = assertThrows(IllegalArgumentException.class, () -> {
+            shortlinkService.redirect(id, true);
+        });
+        assertEquals("Shortlink has expired", exception.getMessage());
+    }
+
+    @Test
+    void testUpdate_InvalidUpdateCode() {
+        String idStr = Util.idToStr(123L);
+        Shortlink mockLink = new Shortlink();
+        mockLink.setUpdateCode("realCode");
+        mockLink.setOriginalUrl("old.com");
+
+        when(shortlinkRepository.findById(123L)).thenReturn(java.util.Optional.of(mockLink));
+
+        Exception exception = assertThrows(IllegalArgumentException.class, () -> {
+            // 提供错误的 updateCode
+            shortlinkService.update(idStr, "http://new.com", 100, "wrongCode");
+        });
+        assertEquals("Invalid update code", exception.getMessage());
+    }
+
+    @Test
+    void testDelete_InvalidUpdateCode() throws Exception {
+        String idStr = Util.idToStr(123L);
+        Shortlink mockLink = new Shortlink();
+        mockLink.setUpdateCode("realCode");
+
+        when(dataSource.getConnection()).thenReturn(dbConnection);
+        when(shortlinkRepository.findById(123L)).thenReturn(java.util.Optional.of(mockLink));
+
+        Exception exception = assertThrows(IllegalArgumentException.class, () -> {
+            shortlinkService.delete(idStr, "wrongCode");
+        });
+        assertEquals("Invalid update code", exception.getMessage());
+    }
+
+    @Test
+    void testGetInfo_Success() {
+        String idStr = Util.idToStr(123L);
+        Shortlink mockLink = new Shortlink();
+        mockLink.setOriginalUrl("http://example.com");
+        
+        // redirect方法会被调用，我们需要让它通过。
+        // 为了避免它真的去查DB，可以Mock它的行为（因为已经Spy了shortlinkService）
+        doReturn("http://example.com").when(shortlinkService).redirect(123L, false);
+        when(shortlinkRepository.findById(123L)).thenReturn(java.util.Optional.of(mockLink));
+
+        String info = shortlinkService.getInfo(idStr);
+        assertNotNull(info);
+        assertTrue(info.contains("http://example.com"));
     }
 }

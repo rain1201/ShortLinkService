@@ -1,10 +1,13 @@
 package com.test.shortlink.controller;
 
+import java.util.List;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
+import org.springframework.core.env.Environment;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -25,16 +28,17 @@ public class ShortlinkController {
     private ShortlinkService shortlinkService;
     @Value("${app.redirect-code:302}")
     private int redirectCode;
+    @Autowired
+    private Environment env;
     private static final Logger logger = LoggerFactory.getLogger(ShortlinkController.class);
     @ExceptionHandler(Exception.class)
-    @Profile("dev")
     public ResponseEntity<String> handleException(Exception e) {
-        return ResponseEntity.status(500).body("Internal Server Error: " + e.getMessage()+e.getStackTrace().toString());
-    }
-    @ExceptionHandler(Exception.class)
-    @Profile("!dev")
-    public ResponseEntity<String> handleExceptionProd(Exception e) {
-        return ResponseEntity.status(500).body("Internal Server Error");
+        boolean isDev = List.of(env.getActiveProfiles()).contains("dev");
+        if(isDev){
+            logger.error("An error occurred: ", e);
+            return ResponseEntity.status(500).body("Internal Server Error: " + e.getMessage()+e.getStackTrace().toString());
+        }
+        return ResponseEntity.status(500).body("Internal Server Error: " );
     }
     @GetMapping("/index")
     public String index() {

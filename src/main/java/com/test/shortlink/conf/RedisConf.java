@@ -1,4 +1,4 @@
-package com.test.shortlink.service;
+package com.test.shortlink.conf;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;

@@ -57,4 +57,28 @@ class UtilTest {
         assertTrue(id2 > 0);
         assertNotEquals(id1, id2, "Generated IDs should be unique");
     }
+
+    @Test
+    void testPowCaptchaCheck() {
+        // 测试 PoW 验证
+        String str = "testString";
+        // 1. 生成正确的验证码
+        String captcha = Util.generatePowCaptcha(str);
+        
+        // 2. 验证应通过
+        assertTrue(Util.powCaptchaCheck(str, captcha));
+        
+        // 3. 验证错误的验证码应失败
+        assertFalse(Util.powCaptchaCheck(str, "wrongCaptcha"));
+    }
+
+    @Test
+    void testSnowFlakeId_InvalidWorkerId() {
+        // 测试边界异常
+        Exception e1 = assertThrows(IllegalArgumentException.class, () -> new SnowFlakeId(-1, 0));
+        assertEquals("Worker ID must be between 0 and 31", e1.getMessage());
+
+        Exception e2 = assertThrows(IllegalArgumentException.class, () -> new SnowFlakeId(0, 32));
+        assertEquals("Datacenter ID must be between 0 and 31", e2.getMessage());
+    }
 }

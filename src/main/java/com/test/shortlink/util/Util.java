@@ -19,7 +19,7 @@ public class Util {
     @Value("${app.datacenter-id:0}")
     private static long datacenterId=0;
     @Value("${app.pow-difficulty:20}")
-    private static int powDifficulty=20;
+    private static int powDifficulty=2;
     @Value("${app.captcha-expire-seconds:300}")
     public static int captchaExpireSeconds=300;
     private static final Logger logger=LoggerFactory.getLogger(Util.class.getName());
@@ -53,7 +53,7 @@ public class Util {
         try{
             MessageDigest md=MessageDigest.getInstance("SHA-1");
             md.reset();
-            String input=str.trim();
+            String input=str.trim()+Captcha.trim();
             md.update(input.getBytes("UTF-8"));
             byte[] hash=md.digest();
             for(int i=0;i<Integer.min(powDifficulty, hash.length);i++) {

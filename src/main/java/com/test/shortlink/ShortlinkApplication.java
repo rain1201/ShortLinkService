@@ -7,8 +7,8 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Profile;
 
-import com.test.shortlink.service.DBConf;
-import com.test.shortlink.service.RedisConf;
+import com.test.shortlink.conf.DBConf;
+import com.test.shortlink.conf.RedisConf;
 
 import javax.sql.DataSource;
 import jakarta.annotation.PostConstruct;
