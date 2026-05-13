@@ -83,6 +83,17 @@ public class MQService {
                 viewCache.clear();
             } catch(Exception e) {
                 conn.rollback();
+                try{
+                    readLock.lock();
+                    var currentCache = viewCacheRef.get();
+                    for(var entry : viewCache.entrySet()) {
+                        var idx = entry.getKey();
+                        var views = entry.getValue();
+                        currentCache.computeIfAbsent(idx, k-> Collections.synchronizedList(new ArrayList<>())).addAll(views);
+                    }
+                } finally {
+                    readLock.unlock();
+                }
                 logger.error("Error occurred while syncing data to DB, transaction rolled back", e);
             }
         } catch(Exception e) {
