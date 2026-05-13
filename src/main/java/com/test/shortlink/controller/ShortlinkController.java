@@ -59,8 +59,9 @@ public class ShortlinkController {
                                            @RequestHeader(value = "X-Forwarded-For", defaultValue = "") String xForwardedFor) {
         // 这里可以实现根据短链接ID重定向到原始URL的逻辑
         ResponseEntity<String> response = ResponseEntity.status(redirectCode)
-                                            .header("Location", shortlinkService.redirect(Util.strToId(id),true))
+                                            .header("Location", shortlinkService.redirect(Util.strToId(id)))
                                             .build();
+        shortlinkService.incrementViewCountAsync(Util.strToId(id), xForwardedFor, userAgent);
         return response;
     }
 

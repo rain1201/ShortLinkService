@@ -32,11 +32,11 @@ public class RedisExpireListener extends KeyExpirationEventMessageListener{
         if(expiredKey.startsWith(RedisKeys.URL_KEY_PREFIX)) {
             String id = expiredKey.substring(RedisKeys.URL_KEY_PREFIX.length());
             if(id.isEmpty()) return;
-            String viewCountKey = RedisKeys.URL_VIEW_COUNT_KEY_PREFIX + id;
+            //String viewCountKey = RedisKeys.URL_VIEW_COUNT_KEY_PREFIX + id;
             String expireKey = RedisKeys.URL_EXPIRE_KEY_PREFIX + id;
-            String newView = stringRedisTemplate.opsForValue().getAndDelete(viewCountKey);
+            //String newView = stringRedisTemplate.opsForValue().getAndDelete(viewCountKey);
             stringRedisTemplate.delete(expireKey);
-            logger.info("Updating view count for expired key: " + id + " with new view count: " + newView);
+            /*logger.info("Updating view count for expired key: " + id + " with new view count: " + newView);
             try(var conn = dataSource.getConnection()) {
                 var stmt = conn.prepareStatement("UPDATE urls SET viewCount = ? WHERE idx = ? AND viewCount < ?");
                 stmt.setString(1, newView != null ? newView : "0");
@@ -45,7 +45,7 @@ public class RedisExpireListener extends KeyExpirationEventMessageListener{
                 stmt.executeUpdate();
             } catch (Exception e) {
                 throw new RuntimeException(e);
-            }
+            }*/
         }
     }
 }

@@ -37,6 +37,14 @@ public class ShortlinkApplication {
 								"    updateCode CHAR(16)," + //
 								"    PRIMARY KEY (idx)" + //
 								");");
+			stmt.execute("CREATE TABLE IF NOT EXISTS views (" + //
+								"    id BIGINT NOT NULL AUTO_INCREMENT," + //
+								"    idx BIGINT NOT NULL," + //
+								"    ip VARCHAR(255) NULL," + //
+								"    userAgent VARCHAR(255) NULL," + //
+								"    ts BIGINT NULL," + //
+								"    PRIMARY KEY (id)" + //
+								");");
 			// add example data
 			stmt.execute("INSERT INTO urls (idx, originalUrl, viewCount, createdAt, expireAfter) VALUES (1, 'http://example.com', 0, UNIX_TIMESTAMP(), 100);");
 			stmt.execute("INSERT INTO urls (idx, originalUrl, viewCount, createdAt, expireAfter) VALUES (2, 'http://test.com', 0, UNIX_TIMESTAMP(), 1000000);");

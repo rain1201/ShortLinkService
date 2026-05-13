@@ -127,7 +127,7 @@ class ShortlinkServiceTest {
         // 模拟过期时间读取（用于异步更新 viewCount）
         lenient().when(valueOperations.get(contains("expire:"))).thenReturn("9999999999");
 
-        String result = shortlinkService.redirect(id, true);
+        String result = shortlinkService.redirect(id);
 
         assertEquals(cachedUrl, result);
         // 验证命中缓存时，没有去查询数据库，也没有去抢 DB 锁
@@ -148,7 +148,7 @@ class ShortlinkServiceTest {
         // 模拟 DB 锁被其他线程一直占用（重试5次均失败）
         when(valueOperations.setIfAbsent(contains("dblock"), eq("1"), any(Duration.class))).thenReturn(false);
         Exception exception = assertThrows(IllegalArgumentException.class, () -> {
-            shortlinkService.redirect(id, true);
+            shortlinkService.redirect(id);
         });
 
         assertEquals("Shortlink is being accessed too frequently, please try again later", exception.getMessage());
@@ -211,7 +211,7 @@ class ShortlinkServiceTest {
         String idStr = Util.idToStr(123L);
 
         // Mock redirect 方法内部的查询抛出异常
-        doThrow(new IllegalArgumentException("Shortlink not found")).when(shortlinkService).redirect(123L, false);
+        doThrow(new IllegalArgumentException("Shortlink not found")).when(shortlinkService).redirect(123L);
         Exception exception = assertThrows(IllegalArgumentException.class, () -> {
             shortlinkService.getInfo(idStr);
         });
@@ -235,7 +235,7 @@ class ShortlinkServiceTest {
         mockLink.setViewCount(10);
         when(shortlinkRepository.findById(id)).thenReturn(java.util.Optional.of(mockLink));
 
-        String result = shortlinkService.redirect(id, false);
+        String result = shortlinkService.redirect(id);
 
         assertEquals(originalUrl, result);
         // 验证查库后重新写入缓存
@@ -257,7 +257,7 @@ class ShortlinkServiceTest {
         when(shortlinkRepository.findById(id)).thenReturn(java.util.Optional.of(mockLink));
 
         Exception exception = assertThrows(IllegalArgumentException.class, () -> {
-            shortlinkService.redirect(id, true);
+            shortlinkService.redirect(id);
         });
         assertEquals("Shortlink has expired", exception.getMessage());
     }
@@ -301,7 +301,7 @@ class ShortlinkServiceTest {
         
         // redirect方法会被调用，我们需要让它通过。
         // 为了避免它真的去查DB，可以Mock它的行为（因为已经Spy了shortlinkService）
-        doReturn("http://example.com").when(shortlinkService).redirect(123L, false);
+        doReturn("http://example.com").when(shortlinkService).redirect(123L);
         when(shortlinkRepository.findById(123L)).thenReturn(java.util.Optional.of(mockLink));
 
         String info = shortlinkService.getInfo(idStr);

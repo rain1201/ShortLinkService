@@ -71,7 +71,7 @@ class ShortlinkControllerTest {
         String shortIdStr = Util.idToStr(123L);
         String targetUrl = "http://example.com";
 
-        when(shortlinkService.redirect(anyLong(), eq(true))).thenReturn(targetUrl);
+        when(shortlinkService.redirect(anyLong())).thenReturn(targetUrl);
 
         mockMvc.perform(get("/{id}", shortIdStr))
                 .andExpect(status().isFound()) // 302

@@ -7,6 +7,7 @@ import javax.sql.DataSource;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
@@ -17,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.test.shortlink.entity.RedisKeys;
 import com.test.shortlink.entity.Shortlink;
+import com.test.shortlink.entity.View;
 import com.test.shortlink.repository.ShortlinkRepository;
 import com.test.shortlink.util.Util;
 
@@ -37,6 +39,8 @@ public class ShortlinkService {
     @Autowired
     @Qualifier("asyncExecutor")
     private Executor asyncExecutor;
+    @Autowired
+    RabbitTemplate rabbitTemplate;
     @Value("${app.expire-seconds:15}")
     private int expireSeconds;
     private static final Logger logger = LoggerFactory.getLogger(ShortlinkService.class);
@@ -65,37 +69,41 @@ public class ShortlinkService {
         }catch(Exception e) {
             throw e instanceof RuntimeException? (RuntimeException)e : new RuntimeException(e);
         }
-        redirect(idx,false);
+        redirect(idx);
         return Util.idToStr(idx);
     }
 
-    public CompletableFuture<Long> incrementViewCountAsync(long id) {
+    public CompletableFuture<Long> incrementViewCountAsync(long id,String ip, String userAgent) {
         return CompletableFuture.supplyAsync(() -> {
-            String cacheViewCountKey = RedisKeys.URL_VIEW_COUNT_KEY_PREFIX + id;
+            //String cacheViewCountKey = RedisKeys.URL_VIEW_COUNT_KEY_PREFIX + id;
             String cacheExpireKey = RedisKeys.URL_EXPIRE_KEY_PREFIX + id;
             long currentTime = System.currentTimeMillis()/1000;
             String res = stringRedisTemplate.opsForValue().get(cacheExpireKey);
             var cachedExpireTime = Long.parseLong(res!=null?res:currentTime+"");
             stringRedisTemplate.expire(id+"", java.time.Duration.ofSeconds(Long.min(cachedExpireTime-currentTime,expireSeconds)));
-            stringRedisTemplate.opsForValue().increment(cacheViewCountKey);
+            //stringRedisTemplate.opsForValue().increment(cacheViewCountKey);
+            View view = new View();
+            view.setIdx(id);
+            view.setIp(ip);
+            view.setTs(currentTime);
+            view.setUserAgent(userAgent);
+            rabbitTemplate.convertAndSend("view.queue", view);
             return 0L;
         }, asyncExecutor);
     }
     
-    public String redirect(long id,boolean updateViewCount) {
+    public String redirect(long id) {
         String cacheKey = RedisKeys.URL_KEY_PREFIX + id;
         String cacheViewCountKey = RedisKeys.URL_VIEW_COUNT_KEY_PREFIX + id;
         String cacheExpireKey = RedisKeys.URL_EXPIRE_KEY_PREFIX + id;
         String dbLockKey = RedisKeys.URL_DB_LOCK_KEY_PREFIX + id;
         long currentTime = System.currentTimeMillis()/1000; 
         long expireTime = (long)1e10;
-        byte updateViewCountByte = (byte)(updateViewCount?1:0);
         try {
             byte retryCount = 0;
             while(retryCount++<5) {
                 var cachedUrl = stringRedisTemplate.opsForValue().get(cacheKey);
                 if(cachedUrl != null){
-                    incrementViewCountAsync(id);
                     return cachedUrl;
                 }
                 if(stringRedisTemplate.opsForValue().setIfAbsent(dbLockKey, "1", java.time.Duration.ofSeconds(10))) {
@@ -111,14 +119,6 @@ public class ShortlinkService {
             Shortlink link = null;
             
             link = shortlinkRepository.findById(id).get();
-            
-            /*try{
-                link= jdbcTemplate.queryForObject("SELECT * FROM urls WHERE idx = ?",
-                                                    new BeanPropertyRowMapper<Shortlink>(Shortlink.class),id);
-            }catch(Exception e) {
-                // link保持为null
-                throw e instanceof RuntimeException? (RuntimeException)e : new RuntimeException(e);
-            }*/
             if(link!=null) {
                 if(link.getExpireAfter()>0) {
                     if(link.getCreatedAt()+link.getExpireAfter()<currentTime) {
@@ -128,7 +128,7 @@ public class ShortlinkService {
                 }
                 String url = link.getOriginalUrl();
                 stringRedisTemplate.expire(cacheKey, java.time.Duration.ofSeconds(Long.min(expireTime-currentTime,expireSeconds)));
-                stringRedisTemplate.opsForValue().set(cacheViewCountKey, link.getViewCount()+updateViewCountByte+"");
+                stringRedisTemplate.opsForValue().set(cacheViewCountKey, link.getViewCount()+"");
                 stringRedisTemplate.opsForValue().set(cacheExpireKey, expireTime+"");
                 return url;
             }else {
@@ -151,7 +151,7 @@ public class ShortlinkService {
             throw new IllegalArgumentException("Shortlink ID cannot be empty");
         }
         long id = Util.strToId(idu);
-        redirect(id,false);
+        redirect(id);
         
         try{
             Shortlink sl= shortlinkRepository.findById(id).get();
@@ -200,9 +200,6 @@ public class ShortlinkService {
                 if(realUpdateCode==null || !realUpdateCode.equals(updateCode)|| realUpdateCode.isEmpty()) {
                     throw new IllegalArgumentException("Invalid update code");
                 }
-                /*stmt = conn.prepareStatement("DELETE FROM urls WHERE idx = ?");
-                stmt.setLong(1, id);
-                stmt.executeUpdate();*/
                 shortlinkRepository.deleteById(id);
                 stringRedisTemplate.delete(RedisKeys.URL_KEY_PREFIX + id);
                 stringRedisTemplate.delete(RedisKeys.URL_VIEW_COUNT_KEY_PREFIX + id);
