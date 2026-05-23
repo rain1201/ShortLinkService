@@ -67,6 +67,20 @@ class ShortlinkControllerTest {
     }
 
     @Test
+    void testShorten_WithoutOptionalParams() throws Exception {
+        when(shortlinkService.shorten(anyString(), anyLong(), anyString())).thenReturn("newId");
+
+        long time = System.currentTimeMillis()/1000;
+        mockMvc.perform(post("/shorten")
+                .param("url", "http://example.com")
+                .param("time", String.valueOf(time))
+                .param("captcha", Util.generatePowCaptcha("http://example.com1000000000"+time))
+                .contentType(MediaType.APPLICATION_FORM_URLENCODED))
+                .andExpect(status().isOk())
+                .andExpect(content().string("newId"));
+    }
+
+    @Test
     void testRedirect() throws Exception {
         String shortIdStr = Util.idToStr(123L);
         String targetUrl = "http://example.com";
@@ -80,8 +94,7 @@ class ShortlinkControllerTest {
 
     @Test
     void testHandleException() throws Exception {
-        // 让 Service 抛出异常以测试 ExceptionHandler
-        when(env.getActiveProfiles()).thenReturn(new String[]{"dev"}); // 模拟 dev 环境
+        when(env.getActiveProfiles()).thenReturn(new String[]{"dev"});
         when(shortlinkService.shorten(anyString(), anyLong(), anyString()))
                 .thenThrow(new IllegalArgumentException("Test Error"));
         long time = System.currentTimeMillis()/1000;
@@ -93,6 +106,35 @@ class ShortlinkControllerTest {
                 .contentType(MediaType.APPLICATION_FORM_URLENCODED))
                 .andExpect(status().isInternalServerError())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("Internal Server Error: Test Error")));
+    }
+
+    @Test
+    void testHandleException_NonDevProfile() throws Exception {
+        when(env.getActiveProfiles()).thenReturn(new String[]{"prod"});
+        when(shortlinkService.shorten(anyString(), anyLong(), anyString()))
+                .thenThrow(new IllegalArgumentException("Hidden error"));
+        long time = System.currentTimeMillis()/1000;
+        mockMvc.perform(post("/shorten")
+                .param("url", "invalid")
+                .param("expireAfter", "1000")
+                .param("captcha", Util.generatePowCaptcha("invalid1000"+time))
+                .param("time", String.valueOf(time))
+                .contentType(MediaType.APPLICATION_FORM_URLENCODED))
+                .andExpect(status().isInternalServerError())
+                .andExpect(content().string("Internal Server Error: "));
+    }
+
+    @Test
+    void testRedirect_WithHeaders() throws Exception {
+        String shortIdStr = Util.idToStr(456L);
+        String targetUrl = "http://redirect-target.com";
+        when(shortlinkService.redirect(anyLong())).thenReturn(targetUrl);
+
+        mockMvc.perform(get("/{id}", shortIdStr)
+                .header("User-Agent", "curl/7.0")
+                .header("X-Forwarded-For", "10.0.0.1"))
+                .andExpect(status().isFound())
+                .andExpect(header().string("Location", targetUrl));
     }
     @Test
     void testGetInfo() throws Exception {

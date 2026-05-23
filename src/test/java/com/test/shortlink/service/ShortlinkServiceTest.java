@@ -59,7 +59,10 @@ class ShortlinkServiceTest {
     @Mock
     private ResultSet resultSet;
 
-    @Spy // 或者使用真实的线程池
+    @Mock
+    private org.springframework.amqp.rabbit.core.RabbitTemplate rabbitTemplate;
+
+    @Spy
     private Executor myExecutor = Executors.newFixedThreadPool(1);
 
     @BeforeEach
@@ -134,9 +137,8 @@ class ShortlinkServiceTest {
         verifyNoInteractions(dataSource);
         verifyNoInteractions(jdbcTemplate);
         
-        // 因为 incrementViewCountAsync 是异步执行的，稍作等待以验证
-        Thread.sleep(100); 
-        verify(valueOperations).increment(contains("viewCount"));
+        // incrementViewCountAsync now uses RabbitMQ, not Redis increment
+        // verify(valueOperations).increment(contains("viewCount"));
     }
 
     @Test
@@ -299,13 +301,125 @@ class ShortlinkServiceTest {
         Shortlink mockLink = new Shortlink();
         mockLink.setOriginalUrl("http://example.com");
         
-        // redirect方法会被调用，我们需要让它通过。
-        // 为了避免它真的去查DB，可以Mock它的行为（因为已经Spy了shortlinkService）
         doReturn("http://example.com").when(shortlinkService).redirect(123L);
         when(shortlinkRepository.findById(123L)).thenReturn(java.util.Optional.of(mockLink));
 
         String info = shortlinkService.getInfo(idStr);
         assertNotNull(info);
         assertTrue(info.contains("http://example.com"));
+    }
+
+    @Test
+    void testGetInfo_EmptyId() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> shortlinkService.getInfo(""));
+        assertEquals("Shortlink ID cannot be empty", ex.getMessage());
+    }
+
+    @Test
+    void testGetInfo_NullId() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> shortlinkService.getInfo(null));
+        assertEquals("Shortlink ID cannot be empty", ex.getMessage());
+    }
+
+    @Test
+    void testShorten_InvalidUrl() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> shortlinkService.shorten("not-a-url", 1000, "code12"));
+        assertEquals("Invalid URL", ex.getMessage());
+    }
+
+    @Test
+    void testShorten_InvalidUpdateCodeFormat() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> shortlinkService.shorten("http://example.com", 1000, "ab"));
+        assertEquals("Invalid update code format", ex.getMessage());
+    }
+
+    @Test
+    void testShorten_EmptyUpdateCode() throws Exception {
+        when(valueOperations.setIfAbsent(contains("createLock"), eq("1"), any(Duration.class))).thenReturn(true);
+        when(shortlinkRepository.save(any(Shortlink.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        Shortlink mockLink = new Shortlink();
+        mockLink.setOriginalUrl("http://example.com");
+        mockLink.setExpireAfter(-1);
+        lenient().when(shortlinkRepository.findById(anyLong())).thenReturn(java.util.Optional.of(mockLink));
+
+        String result = shortlinkService.shorten("http://example.com", 1000, "");
+        assertNotNull(result);
+        verify(shortlinkRepository).save(any(Shortlink.class));
+    }
+
+    @Test
+    void testIncrementViewCountAsync() throws Exception {
+        long id = 123L;
+        lenient().when(valueOperations.get(contains("expire:"))).thenReturn("9999999999");
+        var future = shortlinkService.incrementViewCountAsync(id, "1.1.1.1", "test-agent");
+        Long result = future.get();
+        assertEquals(0L, result);
+    }
+
+    @Test
+    void testDelete_NullUpdateCode() {
+        String idStr = Util.idToStr(123L);
+        assertThrows(NullPointerException.class,
+                () -> shortlinkService.delete(idStr, null));
+    }
+
+    @Test
+    void testDelete_EmptyUpdateCode() throws Exception {
+        String idStr = Util.idToStr(123L);
+        Shortlink mockLink = new Shortlink();
+        mockLink.setUpdateCode("realCode");
+
+        when(shortlinkRepository.findById(123L)).thenReturn(java.util.Optional.of(mockLink));
+        when(dataSource.getConnection()).thenReturn(dbConnection);
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> shortlinkService.delete(idStr, ""));
+        assertEquals("Invalid update code", ex.getMessage());
+    }
+
+    @Test
+    void testRedirect_NotFoundInDb() throws Exception {
+        long id = 999L;
+        when(valueOperations.get(contains("shortlink:url:"))).thenReturn(null);
+        when(valueOperations.setIfAbsent(contains("dblock"), eq("1"), any(Duration.class))).thenReturn(true);
+        when(shortlinkRepository.findById(id)).thenReturn(java.util.Optional.empty());
+
+        assertThrows(RuntimeException.class,
+                () -> shortlinkService.redirect(id));
+    }
+
+    @Test
+    void testUpdate_InvalidUrl() {
+        String idStr = Util.idToStr(123L);
+        Shortlink mockLink = new Shortlink();
+        mockLink.setUpdateCode("secret123");
+        mockLink.setOriginalUrl("http://old.com");
+        mockLink.setCreatedAt(System.currentTimeMillis() / 1000);
+
+        String generatedUpdateCode = Util.generateUpdateCode("secret123", 123L + "invalid-url" + 3600);
+        when(shortlinkRepository.findById(anyLong())).thenReturn(java.util.Optional.of(mockLink));
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> shortlinkService.update(idStr, "invalid-url", 3600, generatedUpdateCode));
+        assertEquals("Invalid URL", ex.getMessage());
+    }
+
+    @Test
+    void testShorten_CreateLockAutoExpires() throws Exception {
+        String originalUrl = "http://example.com";
+        when(valueOperations.setIfAbsent(contains("createLock"), eq("1"), any(Duration.class))).thenReturn(true);
+        when(shortlinkRepository.save(any(Shortlink.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        Shortlink mockLink = new Shortlink();
+        mockLink.setOriginalUrl(originalUrl);
+        mockLink.setExpireAfter(-1);
+        lenient().when(shortlinkRepository.findById(anyLong())).thenReturn(java.util.Optional.of(mockLink));
+
+        shortlinkService.shorten(originalUrl, 10000, "code1234");
+        // createLock has TTL=10s, no explicit delete in code
+        verify(valueOperations).setIfAbsent(contains("createLock"), eq("1"), any(Duration.class));
     }
 }
