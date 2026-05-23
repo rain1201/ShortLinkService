@@ -46,7 +46,9 @@ class ShortlinkControllerTest {
     void testIndex() throws Exception {
         mockMvc.perform(get("/index"))
                 .andExpect(status().isOk())
-                .andExpect(content().string("index"));
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.message").value("success"))
+                .andExpect(jsonPath("$.data").value("ok"));
     }
 
     @Test
@@ -63,7 +65,8 @@ class ShortlinkControllerTest {
                 .param("captcha", Util.generatePowCaptcha("http://example.com1000"+time))
                 .contentType(MediaType.APPLICATION_FORM_URLENCODED))
                 .andExpect(status().isOk())
-                .andExpect(content().string(mockShortId));
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data").value(mockShortId));
     }
 
     @Test
@@ -77,7 +80,8 @@ class ShortlinkControllerTest {
                 .param("captcha", Util.generatePowCaptcha("http://example.com1000000000"+time))
                 .contentType(MediaType.APPLICATION_FORM_URLENCODED))
                 .andExpect(status().isOk())
-                .andExpect(content().string("newId"));
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data").value("newId"));
     }
 
     @Test
@@ -88,7 +92,7 @@ class ShortlinkControllerTest {
         when(shortlinkService.redirect(anyLong())).thenReturn(targetUrl);
 
         mockMvc.perform(get("/{id}", shortIdStr))
-                .andExpect(status().isFound()) // 302
+                .andExpect(status().isFound())
                 .andExpect(header().string("Location", targetUrl));
     }
 
@@ -105,7 +109,8 @@ class ShortlinkControllerTest {
                 .param("time", String.valueOf(time))
                 .contentType(MediaType.APPLICATION_FORM_URLENCODED))
                 .andExpect(status().isInternalServerError())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("Internal Server Error: Test Error")));
+                .andExpect(jsonPath("$.code").value(500))
+                .andExpect(jsonPath("$.message").value("Test Error"));
     }
 
     @Test
@@ -121,7 +126,8 @@ class ShortlinkControllerTest {
                 .param("time", String.valueOf(time))
                 .contentType(MediaType.APPLICATION_FORM_URLENCODED))
                 .andExpect(status().isInternalServerError())
-                .andExpect(content().string("Internal Server Error: "));
+                .andExpect(jsonPath("$.code").value(500))
+                .andExpect(jsonPath("$.message").value("Internal Server Error"));
     }
 
     @Test
@@ -136,6 +142,7 @@ class ShortlinkControllerTest {
                 .andExpect(status().isFound())
                 .andExpect(header().string("Location", targetUrl));
     }
+
     @Test
     void testGetInfo() throws Exception {
         String mockId = "encoded123";
@@ -143,7 +150,8 @@ class ShortlinkControllerTest {
 
         mockMvc.perform(get("/getInfo/{id}", mockId))
                 .andExpect(status().isOk())
-                .andExpect(content().string("Shortlink[Info...]"));
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data").value("Shortlink[Info...]"));
     }
 
     @Test
@@ -158,7 +166,8 @@ class ShortlinkControllerTest {
                 .param("updateCode", "myCode")
                 .contentType(MediaType.APPLICATION_FORM_URLENCODED))
                 .andExpect(status().isOk())
-                .andExpect(content().string("Shortlink updated successfully"));
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data").value("Shortlink updated successfully"));
     }
 
     @Test
@@ -171,7 +180,8 @@ class ShortlinkControllerTest {
                 .param("updateCode", "myCode")
                 .contentType(MediaType.APPLICATION_FORM_URLENCODED))
                 .andExpect(status().isOk())
-                .andExpect(content().string("Shortlink deleted successfully"));
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data").value("Shortlink deleted successfully"));
     }
 
     @Test

@@ -15,20 +15,12 @@ const Api = {
             body: params
         });
 
-        const text = await resp.text();
-        if (!resp.ok) {
-            throw new Error(extractError(text));
-        }
-        return text;
+        return handleJsonResponse(resp);
     },
 
     async getInfo(id) {
         const resp = await fetch(this.baseUrl + '/getInfo/' + encodeURIComponent(id));
-        const text = await resp.text();
-        if (!resp.ok) {
-            throw new Error(extractError(text));
-        }
-        return text;
+        return handleJsonResponse(resp);
     },
 
     async update(id, url, expireAfter, updateCode) {
@@ -45,11 +37,7 @@ const Api = {
             body: params
         });
 
-        const text = await resp.text();
-        if (!resp.ok) {
-            throw new Error(extractError(text));
-        }
-        return text;
+        return handleJsonResponse(resp);
     },
 
     async delete(id, updateCode) {
@@ -62,18 +50,14 @@ const Api = {
             body: params
         });
 
-        const text = await resp.text();
-        if (!resp.ok) {
-            throw new Error(extractError(text));
-        }
-        return text;
+        return handleJsonResponse(resp);
     }
 };
 
-function extractError(text) {
-    if (text.startsWith('Internal Server Error')) {
-        const match = text.match(/Internal Server Error:\s*(.+)/);
-        return match ? match[1].trim() : 'Server error';
+async function handleJsonResponse(resp) {
+    const json = await resp.json();
+    if (!resp.ok || json.code !== 0) {
+        throw new Error(json.message || 'Unknown error');
     }
-    return text || 'Unknown error';
+    return json.data;
 }
