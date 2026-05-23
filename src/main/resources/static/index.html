@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>短链接服务</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>短链接</h1>
+            <p class="subtitle">简洁 · 高效 · 可靠的链接管理</p>
+        </header>
+
+        <nav class="tabs">
+            <button class="tab active" data-tab="create">创建</button>
+            <button class="tab" data-tab="info">查询</button>
+            <button class="tab" data-tab="update">修改</button>
+            <button class="tab" data-tab="delete">删除</button>
+        </nav>
+
+        <div class="tab-content active" id="tab-create">
+            <div class="card">
+                <h2>创建短链接</h2>
+                <form id="createForm" autocomplete="off">
+                    <div class="form-group">
+                        <label for="createUrl">目标 URL <span class="required">*</span></label>
+                        <input type="url" id="createUrl" placeholder="https://example.com/very-long-url" required>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="createExpire">过期时间（秒）</label>
+                            <input type="number" id="createExpire" value="1000000000" min="-1" placeholder="留空=永不过期">
+                            <span class="hint">-1 表示永不过期</span>
+                        </div>
+                        <div class="form-group">
+                            <label for="createCode">更新码</label>
+                            <input type="text" id="createCode" placeholder="4-16位字母数字" pattern="[a-zA-Z0-9]{4,16}">
+                            <span class="hint">留空则无需更新码</span>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary" id="createBtn">
+                        <span class="btn-text">创建短链接</span>
+                        <span class="spinner"></span>
+                    </button>
+                    <div class="captcha-status" id="captchaStatus">
+                        <span class="dot idle"></span>
+                        <span id="captchaText">就绪 — 提交后将执行 PoW 计算</span>
+                    </div>
+                </form>
+                <div id="createResult" class="result-box hidden"></div>
+            </div>
+        </div>
+
+        <div class="tab-content" id="tab-info">
+            <div class="card">
+                <h2>查询短链接</h2>
+                <form id="infoForm">
+                    <div class="form-group">
+                        <label for="infoId">短链接 ID <span class="required">*</span></label>
+                        <input type="text" id="infoId" placeholder="例如: AAAAAAABJw==" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary">查询</button>
+                </form>
+                <div id="infoResult" class="result-box hidden"></div>
+            </div>
+        </div>
+
+        <div class="tab-content" id="tab-update">
+            <div class="card">
+                <h2>修改短链接</h2>
+                <form id="updateForm">
+                    <div class="form-group">
+                        <label for="updateId">短链接 ID <span class="required">*</span></label>
+                        <input type="text" id="updateId" placeholder="例如: AAAAAAABJw==" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="updateCode">更新码 <span class="required">*</span></label>
+                        <input type="text" id="updateCode" placeholder="创建时设置的更新码" required>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="updateUrl">新 URL</label>
+                            <input type="url" id="updateUrl" placeholder="留空则不修改">
+                        </div>
+                        <div class="form-group">
+                            <label for="updateExpire">新过期时间（秒）</label>
+                            <input type="number" id="updateExpire" value="" min="-1" placeholder="留空则不修改">
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-warning">修改</button>
+                </form>
+                <div id="updateResult" class="result-box hidden"></div>
+            </div>
+        </div>
+
+        <div class="tab-content" id="tab-delete">
+            <div class="card">
+                <h2>删除短链接</h2>
+                <form id="deleteForm">
+                    <div class="form-group">
+                        <label for="deleteId">短链接 ID <span class="required">*</span></label>
+                        <input type="text" id="deleteId" placeholder="例如: AAAAAAABJw==" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="deleteCode">更新码 <span class="required">*</span></label>
+                        <input type="text" id="deleteCode" placeholder="创建时设置的更新码" required>
+                    </div>
+                    <button type="submit" class="btn btn-danger">删除</button>
+                </form>
+                <div id="deleteResult" class="result-box hidden"></div>
+            </div>
+        </div>
+
+        <footer class="footer">
+            <p>ShortLink Service</p>
+        </footer>
+    </div>
+
+    <script src="/js/captcha.js"></script>
+    <script src="/js/api.js"></script>
+    <script src="/js/app.js"></script>
+</body>
+</html>
