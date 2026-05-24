@@ -36,6 +36,39 @@ springdoc:
 app:
   redirect-code: 302
   check-code-length: 8
+  # 默认过期时间（秒），对应 Controller 中 expireAfter 默认值
+  default-expire-after: 1000000000
+  # Redis 分布式锁超时（秒）
+  lock-timeout-seconds: 10
+  # 重试次数
+  retry-count: 5
+  # 重试间隔（毫秒）
+  retry-sleep-ms: 50
+  # 默认过期时间戳上限
+  default-expire-time: 10000000000
+  # 视图计数无效标记值
+  sentinel-view-count: -9999
+  # 更新码校验正则
+  update-code-regex: ^[a-zA-Z0-9]{4,16}$
+  # 线程池配置
+  executor:
+    core-pool-size: 10
+    max-pool-size: 100
+    queue-capacity: 1000
+  # MQ 队列名称
+  mq-view-queue: view.queue
+  # 定时同步 DB 间隔（毫秒）
+  mq-sync-interval: 60000
+  # Redis 命令超时（秒）
+  redis-command-timeout: 2
+  # SnowFlake 起始纪元（毫秒，2021-01-01 00:00:00 UTC）
+  snowflake-epoch: 1609459200000
+  # Worker ID 最大值
+  snowflake-max-worker-id: 31
+  # Datacenter ID 最大值
+  snowflake-max-datacenter-id: 31
+  # Sequence 掩码（12 bits）
+  snowflake-sequence-mask: 4095
 
 ---
 spring:

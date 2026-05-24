@@ -29,6 +29,8 @@ public class ShortlinkController {
     private ShortlinkService shortlinkService;
     @Value("${app.redirect-code:302}")
     private int redirectCode;
+    @Value("${app.default-expire-after:1000000000}")
+    private long defaultExpireAfter;
     @Autowired
     private Environment env;
     private static final Logger logger = LoggerFactory.getLogger(ShortlinkController.class);
@@ -55,11 +57,12 @@ public class ShortlinkController {
     @PostMapping("/shorten")
     @PowCaptcha(paramNames={"url","expireAfter"},captchaParamName="captcha",timeParamName="time")
     public ApiResponse<String> shorten(@RequestParam("url") String url,
-                        @RequestParam(value="expireAfter",defaultValue="1000000000") long expireAfter,
+                        @RequestParam(value="expireAfter", required=false) Long expireAfter,
                         @RequestParam(value="updateCode",defaultValue="") String updateCode,
                         @RequestParam("captcha") String captcha,
                         @RequestParam("time") long time) {
-        String id = shortlinkService.shorten(url,expireAfter,updateCode);
+        long expireAfterVal = expireAfter != null ? expireAfter : defaultExpireAfter;
+        String id = shortlinkService.shorten(url, expireAfterVal, updateCode);
         return ApiResponse.success("Shortlink created", id);
     }
 

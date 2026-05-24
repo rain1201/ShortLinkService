@@ -15,6 +15,7 @@ import org.slf4j.Logger;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -34,8 +35,10 @@ public class MQService {
     private ReadWriteLock rwLock = new java.util.concurrent.locks.ReentrantReadWriteLock();
     private Lock readLock = rwLock.readLock();
     private Lock writeLock = rwLock.writeLock();
+    @Value("${app.mq-sync-interval:60000}")
+    private long syncInterval;
     private static final Logger logger = org.slf4j.LoggerFactory.getLogger(MQService.class);
-    @RabbitListener(queues = "view.queue")
+    @RabbitListener(queues = "#{'${app.mq-view-queue:view.queue}'}")
     public void handleViewMessage(View view) {
         try {
             readLock.lock();
@@ -45,7 +48,7 @@ public class MQService {
             readLock.unlock();
         }
     }
-    @Scheduled(fixedDelay = 60000)
+    @Scheduled(fixedDelayString = "${app.mq-sync-interval:60000}")
     public void syncDB(){
         var viewCache = viewCacheRef.get();
         try {

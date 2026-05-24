@@ -43,6 +43,20 @@ public class ShortlinkService {
     RabbitTemplate rabbitTemplate;
     @Value("${app.expire-seconds:15}")
     private int expireSeconds;
+    @Value("${app.lock-timeout-seconds:10}")
+    private int lockTimeoutSeconds;
+    @Value("${app.retry-count:5}")
+    private int retryCount;
+    @Value("${app.retry-sleep-ms:50}")
+    private int retrySleepMs;
+    @Value("${app.default-expire-time:10000000000}")
+    private long defaultExpireTime;
+    @Value("${app.sentinel-view-count:-9999}")
+    private String sentinelViewCount;
+    @Value("${app.update-code-regex:^[a-zA-Z0-9]{4,16}$}")
+    private String updateCodeRegex;
+    @Value("${app.mq-view-queue:view.queue}")
+    private String viewQueue;
     private static final Logger logger = LoggerFactory.getLogger(ShortlinkService.class);
     @Transactional
     public String shorten(String url,long expireAfter,String updateCode) {
@@ -50,12 +64,12 @@ public class ShortlinkService {
         if(!Util.isValidUrl(url)) {
             throw new IllegalArgumentException("Invalid URL");
         }
-        if(updateCode.length()>0 && !updateCode.matches("^[a-zA-Z0-9]{4,16}$")) {
+        if(updateCode.length()>0 && !updateCode.matches(updateCodeRegex)) {
             throw new IllegalArgumentException("Invalid update code format");
         }
         long idx;
         var createLockKey = RedisKeys.URL_CREATE_LOCK_KEY_PREFIX + url;
-        if(!stringRedisTemplate.opsForValue().setIfAbsent(createLockKey, "1", java.time.Duration.ofSeconds(10))) {
+        if(!stringRedisTemplate.opsForValue().setIfAbsent(createLockKey, "1", java.time.Duration.ofSeconds(lockTimeoutSeconds))) {
             throw new IllegalArgumentException("Shortlink creation is too frequent for the same URL");
         }
         Shortlink shortlink = new Shortlink();
@@ -87,7 +101,7 @@ public class ShortlinkService {
             view.setIp(ip);
             view.setTs(currentTime);
             view.setUserAgent(userAgent);
-            rabbitTemplate.convertAndSend("view.queue", view);
+            rabbitTemplate.convertAndSend(viewQueue, view);
             return 0L;
         }, asyncExecutor);
     }
@@ -98,21 +112,21 @@ public class ShortlinkService {
         String cacheExpireKey = RedisKeys.URL_EXPIRE_KEY_PREFIX + id;
         String dbLockKey = RedisKeys.URL_DB_LOCK_KEY_PREFIX + id;
         long currentTime = System.currentTimeMillis()/1000; 
-        long expireTime = (long)1e10;
+        long expireTime = defaultExpireTime;
         try {
-            byte retryCount = 0;
-            while(retryCount++<5) {
+            byte attempt = 0;
+            while(attempt++ < retryCount) {
                 var cachedUrl = stringRedisTemplate.opsForValue().get(cacheKey);
                 if(cachedUrl != null){
                     return cachedUrl;
                 }
-                if(stringRedisTemplate.opsForValue().setIfAbsent(dbLockKey, "1", java.time.Duration.ofSeconds(10))) {
+                if(stringRedisTemplate.opsForValue().setIfAbsent(dbLockKey, "1", java.time.Duration.ofSeconds(lockTimeoutSeconds))) {
                     break;
                 }else{
-                    Thread.sleep(50);
+                    Thread.sleep(retrySleepMs);
                 }
             }
-            if(retryCount>=5) {
+            if(attempt >= retryCount) {
                 throw new IllegalArgumentException("Shortlink is being accessed too frequently, please try again later");
             }
         
@@ -133,7 +147,7 @@ public class ShortlinkService {
                 return url;
             }else {
                 stringRedisTemplate.expire(cacheKey, java.time.Duration.ofSeconds(expireSeconds));
-                stringRedisTemplate.opsForValue().set(cacheViewCountKey, "-9999");
+                stringRedisTemplate.opsForValue().set(cacheViewCountKey, sentinelViewCount);
                 stringRedisTemplate.opsForValue().set(cacheExpireKey, currentTime+expireSeconds+"");
                 throw new IllegalArgumentException("Shortlink not found");
             }

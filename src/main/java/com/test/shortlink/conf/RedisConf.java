@@ -29,6 +29,8 @@ public class RedisConf {
     String password;
     @Value("${spring.redis.ssl:false}")
     boolean ssl;
+    @Value("${app.redis-command-timeout:2}")
+    int redisCommandTimeout;
     final Logger log = LoggerFactory.getLogger(RedisConf.class);
     @Bean
     public RedisConnectionFactory redisConnectionFactory(){
@@ -40,7 +42,7 @@ public class RedisConf {
             serverConfig.setPassword(password);
         }
         LettuceClientConfiguration clientConfig = LettuceClientConfiguration.builder()
-                                                .commandTimeout(Duration.ofSeconds(2))
+                                                .commandTimeout(Duration.ofSeconds(redisCommandTimeout))
                                                 .build();
         LettuceConnectionFactory factory = new LettuceConnectionFactory(serverConfig, clientConfig);
         factory.afterPropertiesSet();

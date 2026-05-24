@@ -69,6 +69,13 @@ class ShortlinkServiceTest {
     void setUp() throws Exception {
         // 1. 注入 @Value 的默认值
         ReflectionTestUtils.setField(shortlinkService, "expireSeconds", 15);
+        ReflectionTestUtils.setField(shortlinkService, "updateCodeRegex", "^[a-zA-Z0-9]{4,16}$");
+        ReflectionTestUtils.setField(shortlinkService, "lockTimeoutSeconds", 10);
+        ReflectionTestUtils.setField(shortlinkService, "retryCount", 5);
+        ReflectionTestUtils.setField(shortlinkService, "retrySleepMs", 50);
+        ReflectionTestUtils.setField(shortlinkService, "defaultExpireTime", 10000000000L);
+        ReflectionTestUtils.setField(shortlinkService, "sentinelViewCount", "-9999");
+        ReflectionTestUtils.setField(shortlinkService, "viewQueue", "view.queue");
 
         // 2. 基础 Redis Mock
         lenient().when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
