@@ -7,10 +7,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.stereotype.Component;
 
 import jakarta.annotation.PostConstruct;
 
-@AutoConfiguration
+@Component
 public class Util {
     private static int checkCodeLength=8;
     private static long workerId=0;
@@ -26,8 +27,7 @@ public class Util {
     private static final Logger logger=LoggerFactory.getLogger(Util.class.getName());
     private static SnowFlakeId idGenerator = new SnowFlakeId(workerId, datacenterId);
     private static boolean initialized=false;
-    @PostConstruct
-    public void init(@Value("${app.worker-id:0}") long workerId,
+    public Util(@Value("${app.worker-id:0}") long workerId,
                      @Value("${app.datacenter-id:0}") long datacenterId,
                      @Value("${app.check-code-length:8}") int checkCodeLength,
                      @Value("${app.pow-difficulty:20}") int powDifficulty,

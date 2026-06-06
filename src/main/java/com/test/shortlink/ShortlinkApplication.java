@@ -9,9 +9,9 @@ import org.springframework.context.annotation.Profile;
 
 import com.test.shortlink.conf.DBConf;
 import com.test.shortlink.conf.ExecutorConf;
+import com.test.shortlink.conf.JacksonConf;
 import com.test.shortlink.conf.MQServiceConf;
 import com.test.shortlink.conf.RedisConf;
-import com.test.shortlink.service.MQService;
 import com.test.shortlink.util.Util;
 
 import javax.sql.DataSource;
@@ -19,7 +19,7 @@ import jakarta.annotation.PostConstruct;
 
 
 @SpringBootApplication
-@Import({ Util.class, DBConf.class, RedisConf.class , ExecutorConf.class, MQServiceConf.class})
+@Import({ Util.class, DBConf.class, RedisConf.class , ExecutorConf.class, MQServiceConf.class,JacksonConf.class})
 public class ShortlinkApplication {
 	@Autowired 
 	DataSource dataSource;
