@@ -59,9 +59,6 @@ class ShortlinkServiceTest {
     @Mock
     private ResultSet resultSet;
 
-    @Mock
-    private org.springframework.amqp.rabbit.core.RabbitTemplate rabbitTemplate;
-
     @Spy
     private Executor myExecutor = Executors.newFixedThreadPool(1);
 
