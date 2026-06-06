@@ -6,16 +6,17 @@ import java.util.HexFormat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.stereotype.Component;
-
-import jakarta.annotation.PostConstruct;
 
 @Component
 public class Util {
     private static int checkCodeLength=8;
     private static long workerId=0;
     private static long datacenterId=0;
+    private static long snowflakeEpoch=1609459200000L;
+    private static long maxWorkerId=31;
+    private static long maxDatacenterId=31;
+    private static long sequenceMask=4095;
     public static long getWorkerId() {
         return workerId;
     }
@@ -25,19 +26,28 @@ public class Util {
     private static int powDifficulty=2;
     public static int captchaExpireSeconds=300;
     private static final Logger logger=LoggerFactory.getLogger(Util.class.getName());
-    private static SnowFlakeId idGenerator = new SnowFlakeId(workerId, datacenterId);
+    private static SnowFlakeId idGenerator = new SnowFlakeId(0, 0);
     private static boolean initialized=false;
     public Util(@Value("${app.worker-id:0}") long workerId,
                      @Value("${app.datacenter-id:0}") long datacenterId,
                      @Value("${app.check-code-length:8}") int checkCodeLength,
-                     @Value("${app.pow-difficulty:20}") int powDifficulty,
-                     @Value("${app.captcha-expire-seconds:300}") int captchaExpireSeconds) {
+                     @Value("${app.pow-difficulty:2}") int powDifficulty,
+                     @Value("${app.captcha-expire-seconds:300}") int captchaExpireSeconds,
+                     @Value("${app.snowflake-epoch:1609459200000}") long snowflakeEpoch,
+                     @Value("${app.snowflake-max-worker-id:31}") long maxWorkerId,
+                     @Value("${app.snowflake-max-datacenter-id:31}") long maxDatacenterId,
+                     @Value("${app.snowflake-sequence-mask:4095}") long sequenceMask) {
         if(initialized) return;
         Util.workerId = workerId;
         Util.datacenterId = datacenterId;
         Util.checkCodeLength = checkCodeLength;
         Util.powDifficulty = powDifficulty;
         Util.captchaExpireSeconds = captchaExpireSeconds;
+        Util.snowflakeEpoch = snowflakeEpoch;
+        Util.maxWorkerId = maxWorkerId;
+        Util.maxDatacenterId = maxDatacenterId;
+        Util.sequenceMask = sequenceMask;
+        idGenerator = new SnowFlakeId(workerId, datacenterId, snowflakeEpoch, maxWorkerId, maxDatacenterId, sequenceMask);
         initialized=true;
     }
     public static long generateLinkId() {

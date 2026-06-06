@@ -36,9 +36,9 @@ public class MQService {
     Executor asyncExecutor;
     @Autowired
     ObjectMapper objectMapper;
-    @Value("${app.mq.maxLocalCacheSize:1000}")
+    @Value("${app.mq.max-local-cache-size:1000}")
     long maxLocalCacheSize;
-    @Value("${app.mq.maxLocalCacheTime:100000}")
+    @Value("${app.mq.max-local-cache-time:100000}")
     long maxLocalCacheTime;
     long lastSyncTime = 0;
     private Map<Long,List<View>> viewCache = new HashMap<>();

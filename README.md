@@ -1,12 +1,12 @@
 # ShortLinkService
 
-A high-performance URL shortening service built with Spring Boot 4.0 and Java 21, featuring Redis caching, RabbitMQ-powered asynchronous view tracking, Proof-of-Work captcha protection, and a dark-themed SPA frontend.
+A high-performance URL shortening service built with Spring Boot 4.0 and Java 21, featuring Redis caching, Redis List-based asynchronous view tracking, Proof-of-Work captcha protection, and a dark-themed SPA frontend.
 
 ## Features
 
 - **URL Shortening** – Create compact short links for any valid URL with configurable expiration.
 - **Fast Redirects** – Cached in Redis for low-latency redirects; falls back to HSQLDB on cache miss.
-- **View Tracking** – Asynchronous view counting via RabbitMQ with batched database writes (every 60s).
+- **View Tracking** – Asynchronous view counting via Redis List (BRPopLPush) with batched database writes (triggered by size or time threshold).
 - **Proof-of-Work Captcha** – SHA-1 based PoW challenge protects the `/shorten` endpoint from spam.
 - **Update/Delete with Auth Codes** – HMAC-like update codes allow link owners to modify or delete their links.
 - **RESTful API** – Clean JSON API with unified response format.
@@ -16,14 +16,18 @@ A high-performance URL shortening service built with Spring Boot 4.0 and Java 21
 ## Architecture
 
 ```
-┌──────────┐     ┌──────────────┐     ┌───────────┐
-│  Browser │────▶│  Spring Boot │────▶│   Redis   │
-│ (SPA UI) │     │   (Tomcat)   │     │  (Cache)  │
-└──────────┘     └──────┬───────┘     └───────────┘
-                        │
-                 ┌──────┴───────┐
-                 │   RabbitMQ   │
-                 │ (View Queue) │
+┌──────────┐     ┌──────────────┐     ┌─────────────┐
+│  Browser │────▶│  Spring Boot │────▶│    Redis     │
+│ (SPA UI) │     │   (Tomcat)   │     │ ┌─────────┐ │
+└──────────┘     └──────┬───────┘     │ │  Cache  │ │
+                        │             │ ├─────────┤ │
+                        │             │ │View List│ │
+                        │             │ └────┬────┘ │
+                        │             └──────┼───────┘
+                        │                    │
+                 ┌──────┴───────┐            │
+                 │  MQService   │◀───────────┘
+                 │ (Background) │  BRPopLPush
                  └──────┬───────┘
                         │
                  ┌──────┴───────┐
@@ -36,19 +40,19 @@ A high-performance URL shortening service built with Spring Boot 4.0 and Java 21
 2. Server checks Redis cache for the original URL.
 3. On cache hit → immediate redirect (302).
 4. On cache miss → query HSQLDB, populate Redis, redirect.
-5. Each redirect publishes a `View` event to RabbitMQ.
-6. A scheduled consumer drains the view queue every 60 seconds and batch-writes to the database.
+5. Each redirect pushes a serialized `View` event to a Redis List (`shortlink:view:mq`).
+6. `MQService` background workers consume the list via `BRPopLPush`, batch views in local cache, and periodically flush to HSQLDB (triggered by size or time threshold).
 
 ## Tech Stack
 
 | Component             | Technology                                           |
 | --------------------- | ---------------------------------------------------- |
 | **Language**          | Java 21                                              |
-| **Framework**         | Spring Boot 4.0.6 (Web, Data JPA, JDBC, AMQP, Redis) |
+| **Framework**         | Spring Boot 4.0.6 (Web, Data JPA, JDBC, Redis)      |
 | **Build Tool**        | Apache Maven 3.9.14 (via Maven Wrapper)              |
 | **Database**          | HSQLDB (file-based, in-memory for tests)             |
-| **Cache**             | Redis (via Spring Data Redis Reactive + Lettuce)     |
-| **Message Queue**     | RabbitMQ (via Spring AMQP)                           |
+| **Cache & Queue**     | Redis (via Spring Data Redis Reactive + Lettuce)     |
+| **Serialization**     | Jackson (JSON for View event serialization)          |
 | **ORM**               | JPA / Hibernate                                      |
 | **API Docs**          | Springdoc OpenAPI 3.0.2                              |
 | **ID Generator**      | Snowflake (41-bit timestamp, 10-bit worker, 12-bit sequence) |
@@ -61,7 +65,6 @@ A high-performance URL shortening service built with Spring Boot 4.0 and Java 21
 
 - **Java 21** JDK (e.g., Eclipse Temurin, Oracle OpenJDK)
 - **Redis** 6+ (running on `localhost:6379`)
-- **RabbitMQ** 3.x (running on `localhost:5672`, guest/guest credentials)
 
 ## Quick Start
 
@@ -78,9 +81,6 @@ cd ShortLinkService
 ```bash
 # Start Redis (Docker example)
 docker run -d -p 6379:6379 redis:7
-
-# Start RabbitMQ (Docker example)
-docker run -d -p 5672:5672 -p 15672:15672 rabbitmq:4-management
 ```
 
 ### 3. Run the Application
@@ -244,12 +244,12 @@ src/
 │   │   ├── ShortlinkApplication.java        # Entry point + dev data initializer
 │   │   ├── anno/                            # Custom annotations (@PowCaptcha, @ParamLenLimit)
 │   │   ├── aspect/                          # AOP aspects for captcha & param validation
-│   │   ├── conf/                            # Spring configuration (DB, Redis, MQ, Executor)
+│   │   ├── conf/                            # Spring configuration (DB, Redis, MQService, Executor, Jackson)
 │   │   ├── controller/                      # REST controller (ShortlinkController)
 │   │   ├── dto/                             # API response wrapper (ApiResponse)
 │   │   ├── entity/                          # JPA entities (Shortlink, View, RedisKeys)
 │   │   ├── repository/                      # JPA repository
-│   │   ├── service/                         # Business logic (ShortlinkService, MQService, etc.)
+│   │   ├── service/                         # Business logic (ShortlinkService, MQService, MQServiceFactory, etc.)
 │   │   └── util/                            # Utilities (SnowFlakeId, URL validation, PoW, etc.)
 │   └── resources/
 │       ├── application.yaml                 # Main configuration
@@ -279,7 +279,7 @@ Tests use the `test` profile with an in-memory HSQLDB and Mockito mocks — no e
 | ----------------------------- | ------------------------------------------------------- |
 | `ShortlinkControllerTest`     | All 6 API endpoints, error handling, dev vs prod profile |
 | `ShortlinkServiceTest`        | Shorten, redirect, update, delete, getInfo, view tracking |
-| `MQServiceTest`               | RabbitMQ consumption, batching, DB sync with retry       |
+| `MQServiceTest`               | Redis List consumption, local caching, DB sync with rollback |
 | `RedisExpireListenerTest`     | Redis key expiration event handling                      |
 | `PowCaptchaAspectTest`        | Captcha validation (valid, expired, invalid, missing)    |
 | `ParamLenLimitAspectTest`     | Parameter length validation (bounds, types, arrays)      |

@@ -12,7 +12,7 @@ import com.test.shortlink.service.MQServiceFactory;
 
 @AutoConfiguration
 public class MQServiceConf {
-    @Value("${app.mq.mqListenerNum:1}")
+    @Value("${app.mq.listener-num:1}")
     int mqListenerNum;
 
     @Bean

@@ -6,7 +6,6 @@ spring:
     username: sa
     password:
     driver-class-name: org.hsqldb.jdbc.JDBCDriver
-    # HikariCP配置:
     hikari:
       auto-commit: false
       connection-timeout: 3000
@@ -20,11 +19,6 @@ spring:
     password:
     database: 0
     ssl: false
-  rabbitmq:
-    host: localhost
-    port: 5672
-    username: guest
-    password: guest
 server:
   port: 8080
 logging:
@@ -50,6 +44,23 @@ app:
   sentinel-view-count: -9999
   # 更新码校验正则
   update-code-regex: ^[a-zA-Z0-9]{4,16}$
+  # Redis 缓存过期时间（秒）
+  expire-seconds: 15
+  # PoW 验证难度（要求前 N 个字节为 0）
+  pow-difficulty: 2
+  # PoW 验证码过期时间（秒）
+  captcha-expire-seconds: 300
+  # Snowflake 配置
+  worker-id: 0
+  datacenter-id: 0
+  # SnowFlake 起始纪元（毫秒，2021-01-01 00:00:00 UTC）
+  snowflake-epoch: 1609459200000
+  # Worker ID 取值范围（0 ~ max-worker-id）
+  snowflake-max-worker-id: 31
+  # Datacenter ID 取值范围（0 ~ max-datacenter-id）
+  snowflake-max-datacenter-id: 31
+  # Sequence 掩码（12 bits）
+  snowflake-sequence-mask: 4095
   # 线程池配置
   executor:
     core-pool-size: 10
@@ -57,18 +68,13 @@ app:
     queue-capacity: 1000
   # MQ 队列名称
   mq-view-queue: view.queue
-  # 定时同步 DB 间隔（毫秒）
-  mq-sync-interval: 60000
+  # MQ 消费者配置
+  mq:
+    max-local-cache-size: 1000
+    max-local-cache-time: 100000
+    listener-num: 1
   # Redis 命令超时（秒）
   redis-command-timeout: 2
-  # SnowFlake 起始纪元（毫秒，2021-01-01 00:00:00 UTC）
-  snowflake-epoch: 1609459200000
-  # Worker ID 最大值
-  snowflake-max-worker-id: 31
-  # Datacenter ID 最大值
-  snowflake-max-datacenter-id: 31
-  # Sequence 掩码（12 bits）
-  snowflake-sequence-mask: 4095
 
 ---
 spring:

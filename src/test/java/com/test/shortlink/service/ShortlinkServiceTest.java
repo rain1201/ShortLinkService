@@ -1,16 +1,22 @@
 package com.test.shortlink.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.test.shortlink.entity.RedisKeys;
 import com.test.shortlink.entity.Shortlink;
+import com.test.shortlink.entity.View;
 import com.test.shortlink.repository.ShortlinkRepository;
 import com.test.shortlink.util.Util;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.redis.core.ListOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -59,6 +65,15 @@ class ShortlinkServiceTest {
     @Mock
     private ResultSet resultSet;
 
+    @Mock
+    private ObjectMapper objectMapper;
+
+    @Mock
+    private ListOperations<String, String> listOperations;
+
+    @Captor
+    private ArgumentCaptor<String> viewJsonCaptor;
+
     @Spy
     private Executor myExecutor = Executors.newFixedThreadPool(1);
 
@@ -76,6 +91,7 @@ class ShortlinkServiceTest {
 
         // 2. 基础 Redis Mock
         lenient().when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
+        lenient().when(stringRedisTemplate.opsForList()).thenReturn(listOperations);
 
         // 3. 默认读写行为打桩
         lenient().when(valueOperations.get(anyString())).thenReturn(null); // 默认未命中缓存
@@ -141,8 +157,7 @@ class ShortlinkServiceTest {
         verifyNoInteractions(dataSource);
         verifyNoInteractions(jdbcTemplate);
         
-        // incrementViewCountAsync now uses RabbitMQ, not Redis increment
-        // verify(valueOperations).increment(contains("viewCount"));
+        // incrementViewCountAsync now uses Redis List, not Redis increment
     }
 
     @Test
@@ -359,9 +374,12 @@ class ShortlinkServiceTest {
     void testIncrementViewCountAsync() throws Exception {
         long id = 123L;
         lenient().when(valueOperations.get(contains("expire:"))).thenReturn("9999999999");
+        when(objectMapper.writeValueAsString(any(View.class))).thenReturn("{\"id\":0,\"idx\":123,\"ts\":100,\"userAgent\":\"test-agent\",\"ip\":\"1.1.1.1\"}");
         var future = shortlinkService.incrementViewCountAsync(id, "1.1.1.1", "test-agent");
         Long result = future.get();
         assertEquals(0L, result);
+        verify(listOperations).leftPush(eq(RedisKeys.URL_VIEW_MQ), viewJsonCaptor.capture());
+        assertTrue(viewJsonCaptor.getValue().contains("123"));
     }
 
     @Test
