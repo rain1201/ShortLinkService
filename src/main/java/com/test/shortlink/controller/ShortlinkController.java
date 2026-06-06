@@ -66,7 +66,7 @@ public class ShortlinkController {
         return ApiResponse.success("Shortlink created", id);
     }
 
-    @GetMapping("/{id}")
+    @GetMapping("/{id:[^.]+}")
     public ResponseEntity<?> redirect(@PathVariable String id,
                                        @RequestHeader(value = "User-Agent", defaultValue = "") String userAgent,
                                        @RequestHeader(value = "X-Forwarded-For", defaultValue = "") String xForwardedFor) {
