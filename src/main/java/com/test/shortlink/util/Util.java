@@ -7,23 +7,39 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
-import org.springframework.stereotype.Component;
+
+import jakarta.annotation.PostConstruct;
 
 @AutoConfiguration
-@Component
 public class Util {
-    @Value("${app.check-code-length:8}")
     private static int checkCodeLength=8;
-    @Value("${app.worker-id:0}")
     private static long workerId=0;
-    @Value("${app.datacenter-id:0}")
     private static long datacenterId=0;
-    @Value("${app.pow-difficulty:20}")
+    public static long getWorkerId() {
+        return workerId;
+    }
+    public static long getDatacenterId() {
+        return datacenterId;
+    }
     private static int powDifficulty=2;
-    @Value("${app.captcha-expire-seconds:300}")
     public static int captchaExpireSeconds=300;
     private static final Logger logger=LoggerFactory.getLogger(Util.class.getName());
     private static SnowFlakeId idGenerator = new SnowFlakeId(workerId, datacenterId);
+    private static boolean initialized=false;
+    @PostConstruct
+    public void init(@Value("${app.worker-id:0}") long workerId,
+                     @Value("${app.datacenter-id:0}") long datacenterId,
+                     @Value("${app.check-code-length:8}") int checkCodeLength,
+                     @Value("${app.pow-difficulty:20}") int powDifficulty,
+                     @Value("${app.captcha-expire-seconds:300}") int captchaExpireSeconds) {
+        if(initialized) return;
+        Util.workerId = workerId;
+        Util.datacenterId = datacenterId;
+        Util.checkCodeLength = checkCodeLength;
+        Util.powDifficulty = powDifficulty;
+        Util.captchaExpireSeconds = captchaExpireSeconds;
+        initialized=true;
+    }
     public static long generateLinkId() {
         return idGenerator.nextId();
     }

@@ -1,6 +1,7 @@
 package com.test.shortlink.conf;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.connection.RedisStandaloneConfiguration;
@@ -8,7 +9,6 @@ import org.springframework.data.redis.connection.lettuce.LettuceClientConfigurat
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.listener.RedisMessageListenerContainer;
-import org.springframework.stereotype.Component;
 
 import java.time.Duration;
 
@@ -17,7 +17,7 @@ import org.slf4j.LoggerFactory;
 
 import io.lettuce.core.RedisClient;
 
-@Component
+@AutoConfiguration
 public class RedisConf {
     @Value("${spring.redis.host}")
     String host;

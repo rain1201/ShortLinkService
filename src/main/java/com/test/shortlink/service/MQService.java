@@ -1,65 +1,88 @@
 package com.test.shortlink.service;
 
-import java.util.ArrayList;
-import java.util.Collections;
+import java.time.Duration;
+import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.Executor;
 
 import javax.sql.DataSource;
 
 import org.slf4j.Logger;
-import org.springframework.amqp.rabbit.annotation.RabbitListener;
-import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.scheduling.annotation.Scheduled;
-import org.springframework.stereotype.Component;
 
+import com.test.shortlink.entity.RedisKeys;
 import com.test.shortlink.entity.View;
+import com.test.shortlink.util.Util;
+
+import jakarta.annotation.PostConstruct;
+import tools.jackson.databind.ObjectMapper;
 
 
-@Component
 public class MQService {
     @Autowired
-    RabbitTemplate rabbitTemplate;
+    StringRedisTemplate stringRedisTemplate;
     @Autowired
     DataSource dataSource;
     @Autowired
     JdbcTemplate jdbcTemplate;
-    private AtomicReference<Map<Long,List<View>>> viewCacheRef = new AtomicReference<>(new ConcurrentHashMap<>());
-    private ReadWriteLock rwLock = new java.util.concurrent.locks.ReentrantReadWriteLock();
-    private Lock readLock = rwLock.readLock();
-    private Lock writeLock = rwLock.writeLock();
-    @Value("${app.mq-sync-interval:60000}")
-    private long syncInterval;
+    @Autowired
+    @Qualifier("asyncExecutor")
+    Executor asyncExecutor;
+    @Autowired
+    ObjectMapper objectMapper;
+    @Value("${app.mq.maxLocalCacheSize:1000}")
+    long maxLocalCacheSize;
+    @Value("${app.mq.maxLocalCacheTime:100000}")
+    long maxLocalCacheTime;
+    long lastSyncTime = 0;
+    private Map<Long,List<View>> viewCache = new HashMap<>();
     private static final Logger logger = org.slf4j.LoggerFactory.getLogger(MQService.class);
-    @RabbitListener(queues = "#{'${app.mq-view-queue:view.queue}'}")
-    public void handleViewMessage(View view) {
-        try {
-            readLock.lock();
-            var viewCache = viewCacheRef.get();
-            viewCache.computeIfAbsent(view.getIdx(), k-> Collections.synchronizedList(new ArrayList<>())).add(view);
-        } finally {
-            readLock.unlock();
-        }
+    private long workerId;
+    private long datacenterId;
+    private long threadId;
+    private String recacheMQKey = null;
+    public MQService(long tid){
+        threadId=tid;
     }
-    @Scheduled(fixedDelayString = "${app.mq-sync-interval:60000}")
+    @PostConstruct
+    public void init() {
+        workerId = Util.getWorkerId();
+        datacenterId = Util.getDatacenterId();
+        recacheMQKey = RedisKeys.URL_VIEW_MQ+":"+datacenterId+":"+workerId+":"+threadId;
+        asyncExecutor.execute(()->{
+            while(true){
+                try{
+                    String newView = stringRedisTemplate.opsForList().rightPopAndLeftPush(
+                        RedisKeys.URL_VIEW_MQ, 
+                        recacheMQKey,Duration.ofSeconds(100));
+                    if(newView==null){
+                        Thread.sleep(100);
+                        continue;
+                    }
+                    View view = objectMapper.readValue(newView, View.class);
+                    viewCache.computeIfAbsent(view.getId(),k->new LinkedList<>()).add(view);
+                    if(viewCache.size()>=maxLocalCacheSize || System.currentTimeMillis()-lastSyncTime>maxLocalCacheTime){
+                        syncDB();
+                        lastSyncTime=System.currentTimeMillis();
+                    }
+                }catch(Exception e){
+                    logger.error("Error occurred while syncing data to DB", e);
+                }
+            }
+        });
+    }
     public void syncDB(){
-        var viewCache = viewCacheRef.get();
-        try {
-            writeLock.lock();
-            viewCache = viewCacheRef.getAndSet(new ConcurrentHashMap<>());
-        } finally {
-            writeLock.unlock();
-        }
         try(var conn = dataSource.getConnection()) {
             try{
                 conn.setAutoCommit(false);
+                long totalViews = viewCache.values().stream().mapToLong(List::size).sum();
+                logger.info("Syncing {} views to DB", totalViews);
                 for(var entry : viewCache.entrySet()) {
                     var idx = entry.getKey();
                     var views = entry.getValue();
@@ -84,19 +107,12 @@ public class MQService {
                 }
                 conn.commit();
                 viewCache.clear();
+                stringRedisTemplate.opsForList().leftPop(recacheMQKey, totalViews);
             } catch(Exception e) {
                 conn.rollback();
-                try{
-                    readLock.lock();
-                    var currentCache = viewCacheRef.get();
-                    for(var entry : viewCache.entrySet()) {
-                        var idx = entry.getKey();
-                        var views = entry.getValue();
-                        currentCache.computeIfAbsent(idx, k-> Collections.synchronizedList(new ArrayList<>())).addAll(views);
-                    }
-                } finally {
-                    readLock.unlock();
-                }
+                while(stringRedisTemplate.opsForList().size(recacheMQKey)>0)
+                    stringRedisTemplate.opsForList().rightPopAndLeftPush(recacheMQKey, RedisKeys.URL_VIEW_MQ);
+                viewCache.clear();
                 logger.error("Error occurred while syncing data to DB, transaction rolled back", e);
             }
         } catch(Exception e) {

@@ -7,4 +7,5 @@ public class RedisKeys {
     public static final String URL_DB_LOCK_KEY_PREFIX = "shortlink:dblock:";
     public static final String URL_CREATE_LOCK_KEY_PREFIX = "shortlink:createLock:"; 
     public static final String URL_CACHE_LIST = "shortlink:cacheList";
+    public static final String URL_VIEW_MQ = "shortlink:view:mq";
 }

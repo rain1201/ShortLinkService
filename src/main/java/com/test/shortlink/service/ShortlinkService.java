@@ -16,6 +16,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.test.shortlink.entity.RedisKeys;
 import com.test.shortlink.entity.Shortlink;
 import com.test.shortlink.entity.View;
@@ -57,6 +59,8 @@ public class ShortlinkService {
     private String updateCodeRegex;
     @Value("${app.mq-view-queue:view.queue}")
     private String viewQueue;
+    @Autowired
+    ObjectMapper objectMapper;
     private static final Logger logger = LoggerFactory.getLogger(ShortlinkService.class);
     @Transactional
     public String shorten(String url,long expireAfter,String updateCode) {
@@ -101,7 +105,13 @@ public class ShortlinkService {
             view.setIp(ip);
             view.setTs(currentTime);
             view.setUserAgent(userAgent);
-            rabbitTemplate.convertAndSend(viewQueue, view);
+            try {
+                stringRedisTemplate.opsForList().leftPush(RedisKeys.URL_VIEW_MQ, objectMapper.writeValueAsString(view));
+            } catch (JsonProcessingException e) {
+                e.printStackTrace();
+                logger.error(e.getMessage());
+            }
+            //rabbitTemplate.convertAndSend(viewQueue, view);
             return 0L;
         }, asyncExecutor);
     }
