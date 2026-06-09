@@ -57,21 +57,23 @@ public class MQService {
         datacenterId = Util.getDatacenterId();
         recacheMQKey = RedisKeys.URL_VIEW_MQ+":"+datacenterId+":"+workerId+":"+threadId;
         asyncExecutor.execute(()->{
+            if(stringRedisTemplate.opsForList().size(recacheMQKey)>0)syncDB();
             while(true){
                 try{
                     String newView = stringRedisTemplate.opsForList().rightPopAndLeftPush(
                         RedisKeys.URL_VIEW_MQ, 
-                        recacheMQKey,Duration.ofSeconds(100));
-                    if(newView==null){
-                        Thread.sleep(100);
-                        continue;
-                    }
-                    cachedViewCount+=1;
-                    if(viewCache.size()>=maxLocalCacheSize || System.currentTimeMillis()-lastSyncTime>maxLocalCacheTime){
+                        recacheMQKey,Duration.ofSeconds(10));
+                    if(cachedViewCount>=maxLocalCacheSize || System.currentTimeMillis()-lastSyncTime>maxLocalCacheTime){
                         syncDB();
                         lastSyncTime=System.currentTimeMillis();
                         cachedViewCount = 0;
                     }
+                    if(newView==null){
+                        Thread.sleep(1000);
+                        continue;
+                    }
+                    cachedViewCount+=1;
+                    
                 }catch(Exception e){
                     logger.error("Error occurred while syncing data to DB", e);
                 }
@@ -82,18 +84,18 @@ public class MQService {
         long cacheLen=stringRedisTemplate.opsForList().size(recacheMQKey);
         for(String viewStr:stringRedisTemplate.opsForList().range(recacheMQKey, 0, cacheLen-1)){
             View view=objectMapper.readValue(viewStr, View.class);
-            viewCache.computeIfAbsent(view.getId(),k->new LinkedList<>()).add(view);
+            viewCache.computeIfAbsent(view.getIdx(),k->new LinkedList<>()).add(view);
         }
         try(var conn = dataSource.getConnection()) {
             try{
                 conn.setAutoCommit(false);
                 logger.info("Syncing {} views to DB", cacheLen);
-                for(var entry : viewCache.entrySet()) {
-                    var idx = entry.getKey();
-                    var views = entry.getValue();
-                    if(views.size()==0) continue;
-                    var sql = "INSERT INTO views (idx, ts, user_agent, ip) VALUES (?, ?, ?, ?)";
-                    try(var pstmt = conn.prepareStatement(sql)) {
+                var sql = "INSERT INTO views (idx, ts, user_agent, ip) VALUES (?, ?, ?, ?)";
+                try(var pstmt = conn.prepareStatement(sql)) {
+                    for(var entry : viewCache.entrySet()) {
+                        var idx = entry.getKey();
+                        var views = entry.getValue();
+                        if(views.size()==0) continue;
                         for(var view : views) {
                             pstmt.setLong(1, view.getIdx());
                             pstmt.setLong(2, view.getTs());
@@ -101,24 +103,31 @@ public class MQService {
                             pstmt.setString(4, view.getIp());
                             pstmt.addBatch();
                         }
-                        pstmt.executeBatch();
                     }
-                    sql = "UPDATE urls SET view_count = view_count + ? WHERE idx = ?";
-                    try(var pstmt = conn.prepareStatement(sql)) {
+                    pstmt.executeBatch();
+                }
+                sql = "UPDATE urls SET view_count = view_count + ? WHERE idx = ?";
+                try(var pstmt = conn.prepareStatement(sql)) {
+                    for(var entry : viewCache.entrySet()) {
+                        var idx = entry.getKey();
+                        var views = entry.getValue();
+                        if(views.size()==0) continue;
                         pstmt.setInt(1, views.size());
                         pstmt.setLong(2, idx);
-                        pstmt.executeUpdate();
+                        pstmt.addBatch();
                     }
+                    pstmt.executeBatch();
                 }
                 conn.commit();
                 viewCache.clear();
                 stringRedisTemplate.opsForList().leftPop(recacheMQKey, cacheLen);
             } catch(Exception e) {
                 conn.rollback();
-                while(stringRedisTemplate.opsForList().size(recacheMQKey)>0)
-                    stringRedisTemplate.opsForList().rightPopAndLeftPush(recacheMQKey, RedisKeys.URL_VIEW_MQ);
+                //while(stringRedisTemplate.opsForList().size(recacheMQKey)>0)
+                //    stringRedisTemplate.opsForList().rightPopAndLeftPush(recacheMQKey, RedisKeys.URL_VIEW_MQ);
                 viewCache.clear();
                 logger.error("Error occurred while syncing data to DB, transaction rolled back", e);
+                Thread.sleep(1000);
             }
         } catch(Exception e) {
             logger.error("Error occurred while syncing data to DB", e);
