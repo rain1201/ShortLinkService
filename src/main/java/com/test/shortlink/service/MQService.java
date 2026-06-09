@@ -41,6 +41,7 @@ public class MQService {
     @Value("${app.mq.max-local-cache-time:100000}")
     long maxLocalCacheTime;
     long lastSyncTime = 0;
+    int cachedViewCount = 0; 
     private Map<Long,List<View>> viewCache = new HashMap<>();
     private static final Logger logger = org.slf4j.LoggerFactory.getLogger(MQService.class);
     private long workerId;
@@ -65,11 +66,11 @@ public class MQService {
                         Thread.sleep(100);
                         continue;
                     }
-                    View view = objectMapper.readValue(newView, View.class);
-                    viewCache.computeIfAbsent(view.getId(),k->new LinkedList<>()).add(view);
+                    cachedViewCount+=1;
                     if(viewCache.size()>=maxLocalCacheSize || System.currentTimeMillis()-lastSyncTime>maxLocalCacheTime){
                         syncDB();
                         lastSyncTime=System.currentTimeMillis();
+                        cachedViewCount = 0;
                     }
                 }catch(Exception e){
                     logger.error("Error occurred while syncing data to DB", e);
@@ -78,11 +79,15 @@ public class MQService {
         });
     }
     public void syncDB(){
+        long cacheLen=stringRedisTemplate.opsForList().size(recacheMQKey);
+        for(String viewStr:stringRedisTemplate.opsForList().range(recacheMQKey, 0, cacheLen-1)){
+            View view=objectMapper.readValue(viewStr, View.class);
+            viewCache.computeIfAbsent(view.getId(),k->new LinkedList<>()).add(view);
+        }
         try(var conn = dataSource.getConnection()) {
             try{
                 conn.setAutoCommit(false);
-                long totalViews = viewCache.values().stream().mapToLong(List::size).sum();
-                logger.info("Syncing {} views to DB", totalViews);
+                logger.info("Syncing {} views to DB", cacheLen);
                 for(var entry : viewCache.entrySet()) {
                     var idx = entry.getKey();
                     var views = entry.getValue();
@@ -107,7 +112,7 @@ public class MQService {
                 }
                 conn.commit();
                 viewCache.clear();
-                stringRedisTemplate.opsForList().leftPop(recacheMQKey, totalViews);
+                stringRedisTemplate.opsForList().leftPop(recacheMQKey, cacheLen);
             } catch(Exception e) {
                 conn.rollback();
                 while(stringRedisTemplate.opsForList().size(recacheMQKey)>0)
