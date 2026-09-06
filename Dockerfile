@@ -4,7 +4,7 @@ WORKDIR /app
 COPY pom.xml /app
 RUN mvn dependency:go-offline -B
 COPY . /app
-RUN mvn build -DskipTests
+RUN mvn -B package --file pom.xml -DskipTests
 
 FROM eclipse-temurin:21-jre-alpine
 RUN mkdir /app
