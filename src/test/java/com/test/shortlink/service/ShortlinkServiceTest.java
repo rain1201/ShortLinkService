@@ -125,7 +125,9 @@ class ShortlinkServiceTest {
         assertNotNull(shortId);
         // 验证生成时成功获取了创建锁
         verify(valueOperations).setIfAbsent(contains("createLock"), eq("1"), any(Duration.class));
-        verify(shortlinkRepository, times(1)).save(any(Shortlink.class));
+        ArgumentCaptor<Shortlink> savedCaptor = ArgumentCaptor.forClass(Shortlink.class);
+        verify(shortlinkRepository, times(1)).save(savedCaptor.capture());
+        assertTrue(savedCaptor.getValue().getCreatedAt() > 0);
     }
 
     @Test
@@ -260,6 +262,7 @@ class ShortlinkServiceTest {
 
         assertEquals(originalUrl, result);
         // 验证查库后重新写入缓存
+        verify(valueOperations).set(contains("shortlink:url:"), eq(originalUrl));
         verify(stringRedisTemplate).expire(contains("shortlink:url:"), any(Duration.class));
         verify(valueOperations).set(contains("viewCount"), eq("10")); // 因为传入的是 updateViewCount=false
     }
@@ -410,8 +413,9 @@ class ShortlinkServiceTest {
         when(valueOperations.setIfAbsent(contains("dblock"), eq("1"), any(Duration.class))).thenReturn(true);
         when(shortlinkRepository.findById(id)).thenReturn(java.util.Optional.empty());
 
-        assertThrows(RuntimeException.class,
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
                 () -> shortlinkService.redirect(id));
+        assertEquals("Shortlink not found", exception.getMessage());
     }
 
     @Test

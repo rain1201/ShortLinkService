@@ -21,6 +21,7 @@ import com.test.shortlink.entity.View;
 import com.test.shortlink.util.Util;
 
 import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
 import tools.jackson.databind.ObjectMapper;
 
 
@@ -48,6 +49,7 @@ public class MQService {
     private long datacenterId;
     private long threadId;
     private String recacheMQKey = null;
+    private volatile boolean running = true;
     public MQService(long tid){
         threadId=tid;
     }
@@ -58,7 +60,7 @@ public class MQService {
         recacheMQKey = RedisKeys.URL_VIEW_MQ+":"+datacenterId+":"+workerId+":"+threadId;
         asyncExecutor.execute(()->{
             if(stringRedisTemplate.opsForList().size(recacheMQKey)>0)syncDB();
-            while(true){
+            while(running){
                 try{
                     String newView = stringRedisTemplate.opsForList().rightPopAndLeftPush(
                         RedisKeys.URL_VIEW_MQ, 
@@ -90,6 +92,7 @@ public class MQService {
             try{
                 conn.setAutoCommit(false);
                 logger.info("Syncing {} views to DB", cacheLen);
+                boolean hasViews = viewCache.values().stream().anyMatch(views -> !views.isEmpty());
                 var sql = "INSERT INTO views (idx, ts, user_agent, ip) VALUES (?, ?, ?, ?)";
                 try(var pstmt = conn.prepareStatement(sql)) {
                     for(var entry : viewCache.entrySet()) {
@@ -104,7 +107,9 @@ public class MQService {
                             pstmt.addBatch();
                         }
                     }
-                    pstmt.executeBatch();
+                    if (hasViews) {
+                        pstmt.executeBatch();
+                    }
                 }
                 sql = "UPDATE urls SET view_count = view_count + ? WHERE idx = ?";
                 try(var pstmt = conn.prepareStatement(sql)) {
@@ -116,7 +121,9 @@ public class MQService {
                         pstmt.setLong(2, idx);
                         pstmt.addBatch();
                     }
-                    pstmt.executeBatch();
+                    if (hasViews) {
+                        pstmt.executeBatch();
+                    }
                 }
                 conn.commit();
                 viewCache.clear();
@@ -132,5 +139,10 @@ public class MQService {
         } catch(Exception e) {
             logger.error("Error occurred while syncing data to DB", e);
         }
+    }
+
+    @PreDestroy
+    public void shutdown() {
+        running = false;
     }
 }
