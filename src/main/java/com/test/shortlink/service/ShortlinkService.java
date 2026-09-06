@@ -2,6 +2,9 @@ package com.test.shortlink.service;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
+import java.util.Optional;
+import java.util.Collections;
+import java.util.UUID;
 
 import javax.sql.DataSource;
 
@@ -11,6 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -59,6 +63,9 @@ public class ShortlinkService {
     @Autowired
     ObjectMapper objectMapper;
     private static final Logger logger = LoggerFactory.getLogger(ShortlinkService.class);
+    private static final DefaultRedisScript<Long> RELEASE_LOCK_SCRIPT = new DefaultRedisScript<>(
+            "if redis.call('get', KEYS[1]) == ARGV[1] then " +
+            "return redis.call('del', KEYS[1]) else return 0 end", Long.class);
     @Transactional
     public String shorten(String url,long expireAfter,String updateCode) {
         // 这里可以实现短链接生成的逻辑，例如使用哈希算法或者随机字符串
@@ -77,6 +84,7 @@ public class ShortlinkService {
         idx=Util.generateLinkId();
         shortlink.setIdx(idx);
         shortlink.setOriginalUrl(url);
+        shortlink.setCreatedAt(System.currentTimeMillis() / 1000);
         shortlink.setExpireAfter(expireAfter);
         shortlink.setUpdateCode(updateCode);
         try {
@@ -98,6 +106,7 @@ public class ShortlinkService {
             stringRedisTemplate.expire(id+"", java.time.Duration.ofSeconds(Long.min(cachedExpireTime-currentTime,expireSeconds)));
             //stringRedisTemplate.opsForValue().increment(cacheViewCountKey);
             View view = new View();
+            view.setId(Util.generateLinkId());
             view.setIdx(id);
             view.setIp(ip);
             view.setTs(currentTime);
@@ -118,29 +127,34 @@ public class ShortlinkService {
         String cacheViewCountKey = RedisKeys.URL_VIEW_COUNT_KEY_PREFIX + id;
         String cacheExpireKey = RedisKeys.URL_EXPIRE_KEY_PREFIX + id;
         String dbLockKey = RedisKeys.URL_DB_LOCK_KEY_PREFIX + id;
-        long currentTime = System.currentTimeMillis()/1000; 
+        long currentTime = System.currentTimeMillis()/1000;
         long expireTime = defaultExpireTime;
+        String lockToken = UUID.randomUUID().toString();
+        boolean lockAcquired = false;
         try {
-            byte attempt = 0;
-            while(attempt++ < retryCount) {
+            for(int attempt = 0; attempt < retryCount; attempt++) {
                 var cachedUrl = stringRedisTemplate.opsForValue().get(cacheKey);
                 if(cachedUrl != null){
                     return cachedUrl;
                 }
-                if(stringRedisTemplate.opsForValue().setIfAbsent(dbLockKey, "1", java.time.Duration.ofSeconds(lockTimeoutSeconds))) {
+                if(stringRedisTemplate.opsForValue().setIfAbsent(dbLockKey, lockToken,
+                        java.time.Duration.ofSeconds(lockTimeoutSeconds))) {
+                    lockAcquired = true;
                     break;
-                }else{
+                }
+                if (attempt + 1 < retryCount) {
                     Thread.sleep(retrySleepMs);
                 }
             }
-            if(attempt >= retryCount) {
+            if(!lockAcquired) {
                 throw new IllegalArgumentException("Shortlink is being accessed too frequently, please try again later");
             }
         
             Shortlink link = null;
             
-            link = shortlinkRepository.findById(id).get();
-            if(link!=null) {
+            Optional<Shortlink> linkOptional = shortlinkRepository.findById(id);
+            if(linkOptional.isPresent()) {
+                link = linkOptional.get();
                 if(link.getExpireAfter()>0) {
                     if(link.getCreatedAt()+link.getExpireAfter()<currentTime) {
                         throw new IllegalArgumentException("Shortlink has expired");
@@ -148,6 +162,7 @@ public class ShortlinkService {
                     expireTime=link.getCreatedAt()+link.getExpireAfter();
                 }
                 String url = link.getOriginalUrl();
+                stringRedisTemplate.opsForValue().set(cacheKey, url);
                 stringRedisTemplate.expire(cacheKey, java.time.Duration.ofSeconds(Long.min(expireTime-currentTime,expireSeconds)));
                 stringRedisTemplate.opsForValue().set(cacheViewCountKey, link.getViewCount()+"");
                 stringRedisTemplate.opsForValue().set(cacheExpireKey, expireTime+"");
@@ -164,7 +179,10 @@ public class ShortlinkService {
         }catch (Exception e) {
             throw e instanceof RuntimeException? (RuntimeException)e : new RuntimeException(e);
         }finally {
-            stringRedisTemplate.delete(dbLockKey);
+            if (lockAcquired) {
+                stringRedisTemplate.execute(RELEASE_LOCK_SCRIPT,
+                        Collections.singletonList(dbLockKey), lockToken);
+            }
         }
     }
     public String getInfo(String idu) {
@@ -175,7 +193,8 @@ public class ShortlinkService {
         redirect(id);
         
         try{
-            Shortlink sl= shortlinkRepository.findById(id).get();
+            Shortlink sl= shortlinkRepository.findById(id)
+                    .orElseThrow(() -> new IllegalArgumentException("Shortlink not found"));
             return sl.toString();
         }catch(Exception e) {
             throw new IllegalArgumentException("Shortlink not found");
@@ -184,10 +203,8 @@ public class ShortlinkService {
 
     public String update(String idu, String url, long expireAfter, String updateCode) {
         long id = Util.strToId(idu);
-        Shortlink sl= shortlinkRepository.findById(id).get();
-        if(sl==null) {
-            throw new IllegalArgumentException("Shortlink not found");
-        }
+        Shortlink sl= shortlinkRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Shortlink not found"));
         if(!Util.isValidUpdateCode(sl.getUpdateCode(), id+url+expireAfter, updateCode)) {
             throw new IllegalArgumentException("Invalid update code");
         }
@@ -211,24 +228,21 @@ public class ShortlinkService {
         updateCode = updateCode.trim();
         long id = Util.strToId(idu);
         try(var conn = dataSource.getConnection()) {
-            Shortlink sl = shortlinkRepository.findById(id).get();
+            Shortlink sl = shortlinkRepository.findById(id)
+                    .orElseThrow(() -> new IllegalArgumentException("Shortlink not found"));
             /*var stmt = conn.prepareStatement("SELECT updateCode FROM urls WHERE idx = ?");
             stmt.setLong(1, id);
             var rs = stmt.executeQuery();*/
-            if(sl!=null) {
-                String realUpdateCode = sl.getUpdateCode();
-                logger.info("Real update code: {}, provided update code: {}", realUpdateCode, updateCode);
-                if(realUpdateCode==null || !realUpdateCode.equals(updateCode)|| realUpdateCode.isEmpty()) {
-                    throw new IllegalArgumentException("Invalid update code");
-                }
-                shortlinkRepository.deleteById(id);
-                stringRedisTemplate.delete(RedisKeys.URL_KEY_PREFIX + id);
-                stringRedisTemplate.delete(RedisKeys.URL_VIEW_COUNT_KEY_PREFIX + id);
-                stringRedisTemplate.delete(RedisKeys.URL_EXPIRE_KEY_PREFIX + id);
-                return "Shortlink deleted successfully";
-            }else {
-                throw new IllegalArgumentException("Shortlink not found");
+            String realUpdateCode = sl.getUpdateCode();
+            logger.info("Real update code: {}, provided update code: {}", realUpdateCode, updateCode);
+            if(realUpdateCode==null || !realUpdateCode.equals(updateCode)|| realUpdateCode.isEmpty()) {
+                throw new IllegalArgumentException("Invalid update code");
             }
+            shortlinkRepository.deleteById(id);
+            stringRedisTemplate.delete(RedisKeys.URL_KEY_PREFIX + id);
+            stringRedisTemplate.delete(RedisKeys.URL_VIEW_COUNT_KEY_PREFIX + id);
+            stringRedisTemplate.delete(RedisKeys.URL_EXPIRE_KEY_PREFIX + id);
+            return "Shortlink deleted successfully";
         }catch (IllegalArgumentException e) {
             throw e;
 

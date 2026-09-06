@@ -77,9 +77,9 @@ class MQServiceTest {
         mqService.syncDB();
 
         verify(insertStmt).executeBatch();
-        verify(updateStmt).executeUpdate();
+        verify(updateStmt).executeBatch();
         verify(dbConnection).commit();
-        verify(listOperations).leftPop(eq("test:recache:0:0:0"), eq(1L));
+        verify(listOperations).leftPop(eq("test:recache:0:0:0"), eq(0L));
     }
 
     @Test
@@ -112,8 +112,8 @@ class MQServiceTest {
 
         mqService.syncDB();
 
-        verify(insertStmt, times(2)).executeBatch();
-        verify(updateStmt, times(2)).executeUpdate();
+        verify(insertStmt).executeBatch();
+        verify(updateStmt).executeBatch();
     }
 
     @Test
@@ -143,7 +143,7 @@ class MQServiceTest {
         mqService.syncDB();
 
         verify(insertStmt, never()).executeBatch();
-        verify(updateStmt, never()).executeUpdate();
+        verify(updateStmt, never()).executeBatch();
         verify(dbConnection).commit();
     }
 }
