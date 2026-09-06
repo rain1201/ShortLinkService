@@ -124,7 +124,7 @@ class ShortlinkServiceTest {
 
         assertNotNull(shortId);
         // 验证生成时成功获取了创建锁
-        verify(valueOperations).setIfAbsent(contains("createLock"), eq("1"), any(Duration.class));
+        verify(valueOperations).setIfAbsent(contains("createLock"), anyString(), any(Duration.class));
         ArgumentCaptor<Shortlink> savedCaptor = ArgumentCaptor.forClass(Shortlink.class);
         verify(shortlinkRepository, times(1)).save(savedCaptor.capture());
         assertTrue(savedCaptor.getValue().getCreatedAt() > 0);
@@ -133,7 +133,7 @@ class ShortlinkServiceTest {
     @Test
     void testShorten_CreateLockFailed() {
         // 模拟创建锁被占用（并发冲突）
-        when(valueOperations.setIfAbsent(contains("createLock"), eq("1"), any(Duration.class))).thenReturn(false);
+        when(valueOperations.setIfAbsent(contains("createLock"), anyString(), any(Duration.class))).thenReturn(false);
 
         Exception exception = assertThrows(IllegalArgumentException.class, () -> {
             shortlinkService.shorten("http://example.com", 1000, "code12");
@@ -169,14 +169,30 @@ class ShortlinkServiceTest {
         // 模拟缓存未命中
         when(valueOperations.get(contains("shortlink:url:"))).thenReturn(null);
         // 模拟 DB 锁被其他线程一直占用（重试5次均失败）
-        when(valueOperations.setIfAbsent(contains("dblock"), eq("1"), any(Duration.class))).thenReturn(false);
+        when(valueOperations.setIfAbsent(contains("dblock"), anyString(), any(Duration.class))).thenReturn(false);
         Exception exception = assertThrows(IllegalArgumentException.class, () -> {
             shortlinkService.redirect(id);
         });
 
         assertEquals("Shortlink is being accessed too frequently, please try again later", exception.getMessage());
         // 验证确实重试了 5 次
-        verify(valueOperations, times(5)).setIfAbsent(contains("dblock"), eq("1"), any(Duration.class));
+        verify(valueOperations, times(5)).setIfAbsent(contains("dblock"), anyString(), any(Duration.class));
+        verify(stringRedisTemplate, never()).execute(any(), anyList(), anyString());
+    }
+
+    @Test
+    void testRedirect_SucceedsOnLastRetry() {
+        ReflectionTestUtils.setField(shortlinkService, "retryCount", 2);
+        when(valueOperations.setIfAbsent(contains("dblock"), anyString(), any(Duration.class)))
+                .thenReturn(false, true);
+
+        Shortlink mockLink = new Shortlink();
+        mockLink.setOriginalUrl("http://last-retry.com");
+        mockLink.setExpireAfter(-1);
+        when(shortlinkRepository.findById(123L)).thenReturn(java.util.Optional.of(mockLink));
+
+        assertEquals("http://last-retry.com", shortlinkService.redirect(123L));
+        verify(valueOperations, times(2)).setIfAbsent(contains("dblock"), anyString(), any(Duration.class));
     }
 
     @Test
@@ -249,7 +265,7 @@ class ShortlinkServiceTest {
 
         // 缓存未命中，获取了DB锁
         when(valueOperations.get(contains("shortlink:url:"))).thenReturn(null);
-        when(valueOperations.setIfAbsent(contains("dblock"), eq("1"), any(Duration.class))).thenReturn(true);
+        when(valueOperations.setIfAbsent(contains("dblock"), anyString(), any(Duration.class))).thenReturn(true);
 
         // Mock DB 查询返回有效数据
         Shortlink mockLink = new Shortlink();
@@ -272,7 +288,7 @@ class ShortlinkServiceTest {
         long id = 123L;
         // 缓存未命中，获取了DB锁
         when(valueOperations.get(contains("shortlink:url:"))).thenReturn(null);
-        when(valueOperations.setIfAbsent(contains("dblock"), eq("1"), any(Duration.class))).thenReturn(true);
+        when(valueOperations.setIfAbsent(contains("dblock"), anyString(), any(Duration.class))).thenReturn(true);
 
         Shortlink mockLink = new Shortlink();
         mockLink.setOriginalUrl("http://expired.com");
@@ -361,7 +377,7 @@ class ShortlinkServiceTest {
 
     @Test
     void testShorten_EmptyUpdateCode() throws Exception {
-        when(valueOperations.setIfAbsent(contains("createLock"), eq("1"), any(Duration.class))).thenReturn(true);
+        when(valueOperations.setIfAbsent(contains("createLock"), anyString(), any(Duration.class))).thenReturn(true);
         when(shortlinkRepository.save(any(Shortlink.class))).thenAnswer(invocation -> invocation.getArgument(0));
         Shortlink mockLink = new Shortlink();
         mockLink.setOriginalUrl("http://example.com");
@@ -410,7 +426,6 @@ class ShortlinkServiceTest {
     void testRedirect_NotFoundInDb() throws Exception {
         long id = 999L;
         when(valueOperations.get(contains("shortlink:url:"))).thenReturn(null);
-        when(valueOperations.setIfAbsent(contains("dblock"), eq("1"), any(Duration.class))).thenReturn(true);
         when(shortlinkRepository.findById(id)).thenReturn(java.util.Optional.empty());
 
         IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
@@ -446,6 +461,6 @@ class ShortlinkServiceTest {
 
         shortlinkService.shorten(originalUrl, 10000, "code1234");
         // createLock has TTL=10s, no explicit delete in code
-        verify(valueOperations).setIfAbsent(contains("createLock"), eq("1"), any(Duration.class));
+        verify(valueOperations).setIfAbsent(contains("createLock"), anyString(), any(Duration.class));
     }
 }

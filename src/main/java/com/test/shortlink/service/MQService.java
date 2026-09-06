@@ -2,9 +2,12 @@ package com.test.shortlink.service;
 
 import java.time.Duration;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.Executor;
 
 import javax.sql.DataSource;
@@ -92,33 +95,80 @@ public class MQService {
             try{
                 conn.setAutoCommit(false);
                 logger.info("Syncing {} views to DB", cacheLen);
-                boolean hasViews = viewCache.values().stream().anyMatch(views -> !views.isEmpty());
-                var sql = "INSERT INTO views (idx, ts, user_agent, ip) VALUES (?, ?, ?, ?)";
-                try(var pstmt = conn.prepareStatement(sql)) {
-                    for(var entry : viewCache.entrySet()) {
-                        var idx = entry.getKey();
-                        var views = entry.getValue();
-                        if(views.size()==0) continue;
-                        for(var view : views) {
+                List<View> pendingViews = new ArrayList<>();
+                Set<Long> seenEventIds = new HashSet<>();
+                for (var views : viewCache.values()) {
+                    for (var view : views) {
+                        if (view.getId() == 0 || seenEventIds.add(view.getId())) {
+                            pendingViews.add(view);
+                        }
+                    }
+                }
+
+                Set<Long> persistedEventIds = new HashSet<>();
+                List<Long> eventIds = pendingViews.stream()
+                        .map(View::getId)
+                        .filter(id -> id != 0)
+                        .toList();
+                if (!eventIds.isEmpty()) {
+                    String placeholders = String.join(",", java.util.Collections.nCopies(eventIds.size(), "?"));
+                    try (var pstmt = conn.prepareStatement("SELECT id FROM views WHERE id IN (" + placeholders + ")")) {
+                        for (int i = 0; i < eventIds.size(); i++) {
+                            pstmt.setLong(i + 1, eventIds.get(i));
+                        }
+                        try (var rs = pstmt.executeQuery()) {
+                            while (rs.next()) {
+                                persistedEventIds.add(rs.getLong(1));
+                            }
+                        }
+                    }
+                }
+
+                List<View> newViews = pendingViews.stream()
+                        .filter(view -> view.getId() == 0 || !persistedEventIds.contains(view.getId()))
+                        .toList();
+                boolean hasViews = !newViews.isEmpty();
+
+                List<View> generatedIdViews = newViews.stream().filter(view -> view.getId() != 0).toList();
+                if (!generatedIdViews.isEmpty()) {
+                    try (var pstmt = conn.prepareStatement(
+                            "INSERT INTO views (id, idx, ts, user_agent, ip) VALUES (?, ?, ?, ?, ?)")) {
+                        for (var view : generatedIdViews) {
+                            pstmt.setLong(1, view.getId());
+                            pstmt.setLong(2, view.getIdx());
+                            pstmt.setLong(3, view.getTs());
+                            pstmt.setString(4, view.getUserAgent());
+                            pstmt.setString(5, view.getIp());
+                            pstmt.addBatch();
+                        }
+                        pstmt.executeBatch();
+                    }
+                }
+
+                List<View> legacyViews = newViews.stream().filter(view -> view.getId() == 0).toList();
+                if (!legacyViews.isEmpty()) {
+                    try (var pstmt = conn.prepareStatement(
+                            "INSERT INTO views (idx, ts, user_agent, ip) VALUES (?, ?, ?, ?)")) {
+                        for (var view : legacyViews) {
                             pstmt.setLong(1, view.getIdx());
                             pstmt.setLong(2, view.getTs());
                             pstmt.setString(3, view.getUserAgent());
                             pstmt.setString(4, view.getIp());
                             pstmt.addBatch();
                         }
-                    }
-                    if (hasViews) {
                         pstmt.executeBatch();
                     }
                 }
-                sql = "UPDATE urls SET view_count = view_count + ? WHERE idx = ?";
+
+                Map<Long, Integer> newViewCounts = new HashMap<>();
+                for (var view : newViews) {
+                    newViewCounts.merge(view.getIdx(), 1, Integer::sum);
+                }
+                var sql = "UPDATE urls SET view_count = view_count + ? WHERE idx = ?";
                 try(var pstmt = conn.prepareStatement(sql)) {
-                    for(var entry : viewCache.entrySet()) {
-                        var idx = entry.getKey();
-                        var views = entry.getValue();
-                        if(views.size()==0) continue;
-                        pstmt.setInt(1, views.size());
-                        pstmt.setLong(2, idx);
+                    for(var entry : newViewCounts.entrySet()) {
+                        pstmt.setInt(1, entry.getValue());
+                        pstmt.setLong(2, entry.getKey());
                         pstmt.addBatch();
                     }
                     if (hasViews) {

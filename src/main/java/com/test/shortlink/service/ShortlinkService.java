@@ -3,6 +3,8 @@ package com.test.shortlink.service;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.Optional;
+import java.util.Collections;
+import java.util.UUID;
 
 import javax.sql.DataSource;
 
@@ -12,6 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -60,6 +63,9 @@ public class ShortlinkService {
     @Autowired
     ObjectMapper objectMapper;
     private static final Logger logger = LoggerFactory.getLogger(ShortlinkService.class);
+    private static final DefaultRedisScript<Long> RELEASE_LOCK_SCRIPT = new DefaultRedisScript<>(
+            "if redis.call('get', KEYS[1]) == ARGV[1] then " +
+            "return redis.call('del', KEYS[1]) else return 0 end", Long.class);
     @Transactional
     public String shorten(String url,long expireAfter,String updateCode) {
         // 这里可以实现短链接生成的逻辑，例如使用哈希算法或者随机字符串
@@ -100,6 +106,7 @@ public class ShortlinkService {
             stringRedisTemplate.expire(id+"", java.time.Duration.ofSeconds(Long.min(cachedExpireTime-currentTime,expireSeconds)));
             //stringRedisTemplate.opsForValue().increment(cacheViewCountKey);
             View view = new View();
+            view.setId(Util.generateLinkId());
             view.setIdx(id);
             view.setIp(ip);
             view.setTs(currentTime);
@@ -120,22 +127,26 @@ public class ShortlinkService {
         String cacheViewCountKey = RedisKeys.URL_VIEW_COUNT_KEY_PREFIX + id;
         String cacheExpireKey = RedisKeys.URL_EXPIRE_KEY_PREFIX + id;
         String dbLockKey = RedisKeys.URL_DB_LOCK_KEY_PREFIX + id;
-        long currentTime = System.currentTimeMillis()/1000; 
+        long currentTime = System.currentTimeMillis()/1000;
         long expireTime = defaultExpireTime;
+        String lockToken = UUID.randomUUID().toString();
+        boolean lockAcquired = false;
         try {
-            byte attempt = 0;
-            while(attempt++ < retryCount) {
+            for(int attempt = 0; attempt < retryCount; attempt++) {
                 var cachedUrl = stringRedisTemplate.opsForValue().get(cacheKey);
                 if(cachedUrl != null){
                     return cachedUrl;
                 }
-                if(stringRedisTemplate.opsForValue().setIfAbsent(dbLockKey, "1", java.time.Duration.ofSeconds(lockTimeoutSeconds))) {
+                if(stringRedisTemplate.opsForValue().setIfAbsent(dbLockKey, lockToken,
+                        java.time.Duration.ofSeconds(lockTimeoutSeconds))) {
+                    lockAcquired = true;
                     break;
-                }else{
+                }
+                if (attempt + 1 < retryCount) {
                     Thread.sleep(retrySleepMs);
                 }
             }
-            if(attempt >= retryCount) {
+            if(!lockAcquired) {
                 throw new IllegalArgumentException("Shortlink is being accessed too frequently, please try again later");
             }
         
@@ -168,7 +179,10 @@ public class ShortlinkService {
         }catch (Exception e) {
             throw e instanceof RuntimeException? (RuntimeException)e : new RuntimeException(e);
         }finally {
-            stringRedisTemplate.delete(dbLockKey);
+            if (lockAcquired) {
+                stringRedisTemplate.execute(RELEASE_LOCK_SCRIPT,
+                        Collections.singletonList(dbLockKey), lockToken);
+            }
         }
     }
     public String getInfo(String idu) {
