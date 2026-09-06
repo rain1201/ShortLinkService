@@ -34,24 +34,24 @@ public class ShortlinkApplication {
 			var stmt = conn.createStatement();
 			stmt.execute("CREATE TABLE IF NOT EXISTS urls (" + //
 								"    idx BIGINT NOT NULL," + //
-								"    originalUrl VARCHAR(255) NOT NULL," + //
-								"    viewCount BIGINT DEFAULT 0 NOT NULL ," + //
-								"    createdAt BIGINT DEFAULT 0 NOT NULL," + //
-								"    expireAfter BIGINT DEFAULT -1 NOT NULL," + //
-								"    updateCode CHAR(16)," + //
+								"    original_url VARCHAR(255) NOT NULL," + //
+								"    view_count BIGINT DEFAULT 0 NOT NULL ," + //
+								"    created_at BIGINT DEFAULT 0 NOT NULL," + //
+								"    expire_after BIGINT DEFAULT -1 NOT NULL," + //
+								"    update_code CHAR(16)," + //
 								"    PRIMARY KEY (idx)" + //
 								");");
 			stmt.execute("CREATE TABLE IF NOT EXISTS views (" + //
 								"    id BIGINT NOT NULL AUTO_INCREMENT," + //
 								"    idx BIGINT NOT NULL," + //
 								"    ip VARCHAR(255) NULL," + //
-								"    userAgent VARCHAR(255) NULL," + //
+								"    user_agent VARCHAR(255) NULL," + //
 								"    ts BIGINT NULL," + //
 								"    PRIMARY KEY (id)" + //
 								");");
 			// add example data
-			stmt.execute("INSERT INTO urls (idx, originalUrl, viewCount, createdAt, expireAfter) VALUES (1, 'http://example.com', 0, UNIX_TIMESTAMP(), 100);");
-			stmt.execute("INSERT INTO urls (idx, originalUrl, viewCount, createdAt, expireAfter) VALUES (2, 'http://test.com', 0, UNIX_TIMESTAMP(), 1000000);");
+			stmt.execute("INSERT INTO urls (idx, original_url, view_count, created_at, expire_after) VALUES (1, 'http://example.com', 0, UNIX_TIMESTAMP(), 100);");
+			stmt.execute("INSERT INTO urls (idx, original_url, view_count, created_at, expire_after) VALUES (2, 'http://test.com', 0, UNIX_TIMESTAMP(), 1000000);");
 		} catch (Exception e) {
 			//throw new RuntimeException(e);
 		}

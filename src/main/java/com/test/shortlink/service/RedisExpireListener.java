@@ -38,7 +38,7 @@ public class RedisExpireListener extends KeyExpirationEventMessageListener{
             stringRedisTemplate.delete(expireKey);
             /*logger.info("Updating view count for expired key: " + id + " with new view count: " + newView);
             try(var conn = dataSource.getConnection()) {
-                var stmt = conn.prepareStatement("UPDATE urls SET viewCount = ? WHERE idx = ? AND viewCount < ?");
+				var stmt = conn.prepareStatement("UPDATE urls SET view_count = ? WHERE idx = ? AND view_count < ?");
                 stmt.setString(1, newView != null ? newView : "0");
                 stmt.setString(2, id);
                 stmt.setString(3, newView != null ? newView : "0");
