@@ -1,0 +1,38 @@
+version:3.9
+services:
+  redis:
+    image: redis:7.0.11
+    container_name: redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: ["redis-server", "--requirepass", "yourpassword"]
+  shortlink:
+    build: .
+    container_name: shortlink
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_REDIS_HOST: redis
+      SPRING_REDIS_PORT: 6379
+      SPRING_REDIS_PASSWORD: yourpassword
+      SPRING_DATASOURCE_URL: jdbc:hsqldb:file:/data/testdb
+      SPRING_DATASOURCE_USERNAME: sa
+      SPRING_DATASOURCE_PASSWORD:
+    depends_on:
+      - redis
+    volumes:
+      - data:/data
+volumes:
+  data:
+    driver: local
+  redis_data:
+    driver: local
+networks:
+  default:
+    name: shortlink_network
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

@@ -2,7 +2,7 @@ spring:
   application:
     name: shortlink
   datasource:
-    url: jdbc:hsqldb:file:testdb
+    url: jdbc:hsqldb:file:db/testdb
     username: sa
     password:
     driver-class-name: org.hsqldb.jdbc.JDBCDriver
