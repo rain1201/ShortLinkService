@@ -26,6 +26,10 @@ logging:
     root: INFO
     com.test.shortlink: DEBUG
 springdoc:
+  swagger-ui:
+    enable: false
+  api-docs:
+    enabled: false
   packages-to-scan: com.test.shortlink.controller
 app:
   redirect-code: 302
@@ -75,11 +79,6 @@ app:
     listener-num: 1
   # Redis 命令超时（秒）
   redis-command-timeout: 20
-springdoc:
-  swagger-ui:
-    enable: false
-  api-docs:
-    enabled: false
 ---
 spring:
   config:
