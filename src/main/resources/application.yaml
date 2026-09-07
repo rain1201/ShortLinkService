@@ -71,10 +71,10 @@ app:
   # MQ 消费者配置
   mq:
     max-local-cache-size: 1000
-    max-local-cache-time: 100000
+    max-local-cache-time: 10000
     listener-num: 1
   # Redis 命令超时（秒）
-  redis-command-timeout: 2
+  redis-command-timeout: 20
 
 ---
 spring:

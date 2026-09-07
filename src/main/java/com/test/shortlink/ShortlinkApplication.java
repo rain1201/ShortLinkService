@@ -41,7 +41,7 @@ public class ShortlinkApplication {
 								"    PRIMARY KEY (idx)" + //
 								");");
 			stmt.execute("CREATE TABLE IF NOT EXISTS views (" + //
-								"    id BIGINT NOT NULL AUTO_INCREMENT," + //
+								"    id BIGINT NOT NULL," + //
 								"    idx BIGINT NOT NULL," + //
 								"    ip VARCHAR(255) NULL," + //
 								"    user_agent VARCHAR(255) NULL," + //
@@ -49,6 +49,8 @@ public class ShortlinkApplication {
 								"    PRIMARY KEY (id)" + //
 								");");
 		} catch (Exception e) {
+			System.err.println("Error initializing database: " + e.getMessage());
+			e.printStackTrace();
 			//throw new RuntimeException(e);
 		}
 	}
