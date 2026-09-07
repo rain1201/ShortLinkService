@@ -205,7 +205,7 @@ public class ShortlinkService {
         long id = Util.strToId(idu);
         Shortlink sl= shortlinkRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Shortlink not found"));
-        if(!Util.isValidUpdateCode(sl.getUpdateCode(), id+url+expireAfter, updateCode)) {
+        if(!Util.isValidUpdateCode(sl.getUpdateCode(), idu+url+expireAfter, updateCode)) {
             throw new IllegalArgumentException("Invalid update code");
         }
         logger.info("Updating shortlink {} with url {} and expireAfter {}", id, url, expireAfter);
@@ -233,7 +233,7 @@ public class ShortlinkService {
             /*var stmt = conn.prepareStatement("SELECT updateCode FROM urls WHERE idx = ?");
             stmt.setLong(1, id);
             var rs = stmt.executeQuery();*/
-            String realUpdateCode = sl.getUpdateCode();
+            String realUpdateCode = sl.getUpdateCode().trim();
             logger.info("Real update code: {}, provided update code: {}", realUpdateCode, updateCode);
             if(realUpdateCode==null || !realUpdateCode.equals(updateCode)|| realUpdateCode.isEmpty()) {
                 throw new IllegalArgumentException("Invalid update code");

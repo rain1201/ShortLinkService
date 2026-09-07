@@ -151,12 +151,13 @@
         const updateCode = document.getElementById('updateCode').value.trim();
         const url = document.getElementById('updateUrl').value.trim();
         const expireEl = document.getElementById('updateExpire');
-        const expireAfter = expireEl.value.trim() !== '' ? parseInt(expireEl.value) : undefined;
+        const expireAfter = expireEl.value.trim() !== '' ? parseInt(expireEl.value) : 0;
+        const updateCodeSha = (await Captcha.sha1(updateCode+id+url+expireAfter)).toHex();
 
         if (!id || !updateCode) return;
 
         try {
-            const msg = await Api.update(id, url, expireAfter, updateCode);
+            const msg = await Api.update(id, url, expireAfter, updateCodeSha);
             showResult(updateResult, 'info', msg);
         } catch (err) {
             showResult(updateResult, 'error', '修改失败: ' + err.message);
@@ -172,6 +173,7 @@
 
         const id = document.getElementById('deleteId').value.trim();
         const updateCode = document.getElementById('deleteCode').value.trim();
+        const updateCodeSha = (await Captcha.sha1(updateCode+id)).toHex();
 
         if (!id || !updateCode) return;
 

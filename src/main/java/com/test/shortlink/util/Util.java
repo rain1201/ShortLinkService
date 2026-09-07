@@ -70,7 +70,7 @@ public class Util {
             md.update((realCode+updateString).trim().getBytes("UTF-8"));
             String expectedCode= HexFormat.of().formatHex(md.digest());
             logger.info("Generated update code: {},[{}]", expectedCode,(realCode+updateString).trim());
-            return expectedCode.substring(0, checkCodeLength);
+            return expectedCode;//.substring(0, checkCodeLength);
         }catch(Exception e){
             throw new RuntimeException(e);
         }
