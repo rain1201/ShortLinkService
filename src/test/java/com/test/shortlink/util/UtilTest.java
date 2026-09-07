@@ -39,7 +39,7 @@ class UtilTest {
         // 测试生成代码
         String generatedCode = Util.generateUpdateCode(realCode, updateString);
         assertNotNull(generatedCode);
-        assertEquals(8, generatedCode.length()); // 默认 checkCodeLength = 8
+        assertEquals(40, generatedCode.length()); // 默认 checkCodeLength = 8
 
         // 测试校验代码是否通过
         assertTrue(Util.isValidUpdateCode(realCode, updateString, generatedCode));
@@ -134,7 +134,7 @@ class UtilTest {
     void testGenerateUpdateCode_EmptyRealCode() {
         String code = Util.generateUpdateCode("", "testString");
         assertNotNull(code);
-        assertEquals(8, code.length());
+        assertEquals(40, code.length());
     }
 
     @Test

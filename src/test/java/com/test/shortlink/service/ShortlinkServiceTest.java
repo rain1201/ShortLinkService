@@ -210,7 +210,7 @@ class ShortlinkServiceTest {
         mockLink.setUpdateCode(realUpdateCode);
         
         // 反推计算合法的 UpdateCode
-        var generatedUpdateCode = Util.generateUpdateCode(realUpdateCode, 123L + url + expireAfter);
+        var generatedUpdateCode = Util.generateUpdateCode(realUpdateCode, idStr + url + expireAfter);
 
         when(shortlinkRepository.findById(anyLong())).thenReturn(java.util.Optional.of(mockLink));
         String result = shortlinkService.update(idStr, url, expireAfter, generatedUpdateCode);
@@ -441,7 +441,7 @@ class ShortlinkServiceTest {
         mockLink.setOriginalUrl("http://old.com");
         mockLink.setCreatedAt(System.currentTimeMillis() / 1000);
 
-        String generatedUpdateCode = Util.generateUpdateCode("secret123", 123L + "invalid-url" + 3600);
+        String generatedUpdateCode = Util.generateUpdateCode("secret123", idStr + "invalid-url" + 3600);
         when(shortlinkRepository.findById(anyLong())).thenReturn(java.util.Optional.of(mockLink));
 
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
