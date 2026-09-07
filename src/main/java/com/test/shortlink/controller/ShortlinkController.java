@@ -1,13 +1,10 @@
 package com.test.shortlink.controller;
 
-import java.util.List;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
-import org.springframework.core.env.Environment;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -19,6 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.test.shortlink.anno.PowCaptcha;
 import com.test.shortlink.dto.ApiResponse;
+import com.test.shortlink.dto.ErrorCode;
 import com.test.shortlink.service.ShortlinkService;
 import com.test.shortlink.util.Util;
 
@@ -31,22 +29,23 @@ public class ShortlinkController {
     private int redirectCode;
     @Value("${app.default-expire-after:1000000000}")
     private long defaultExpireAfter;
-    @Autowired
-    private Environment env;
     private static final Logger logger = LoggerFactory.getLogger(ShortlinkController.class);
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleException(Exception e) {
-        boolean isDev = List.of(env.getActiveProfiles()).contains("dev");
         String msg = e.getMessage();
         if (msg == null || msg.isBlank()) {
             msg = "Internal Server Error";
         }
-        if (isDev) {
-            logger.error("An error occurred: ", e);
-            return ResponseEntity.status(500).body(ApiResponse.error(500, msg));
+
+        if (e instanceof IllegalArgumentException) {
+            logger.warn("Request rejected: {}", msg);
+            return ResponseEntity.badRequest().body(ApiResponse.error(ErrorCode.INVALID_REQUEST, msg));
         }
-        return ResponseEntity.status(500).body(ApiResponse.error(500, "Internal Server Error"));
+
+        logger.error("Unhandled request error", e);
+        return ResponseEntity.internalServerError()
+                .body(ApiResponse.error(ErrorCode.INTERNAL_ERROR, "Internal Server Error"));
     }
 
     @GetMapping("/index")

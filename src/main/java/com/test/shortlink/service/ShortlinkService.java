@@ -114,8 +114,7 @@ public class ShortlinkService {
             try {
                 stringRedisTemplate.opsForList().leftPush(RedisKeys.URL_VIEW_MQ, objectMapper.writeValueAsString(view));
             } catch (JsonProcessingException e) {
-                e.printStackTrace();
-                logger.error(e.getMessage());
+                logger.error("Failed to enqueue view event", e);
             }
             //rabbitTemplate.convertAndSend(viewQueue, view);
             return 0L;
@@ -234,7 +233,7 @@ public class ShortlinkService {
             stmt.setLong(1, id);
             var rs = stmt.executeQuery();*/
             String realUpdateCode = sl.getUpdateCode().trim();
-            logger.info("Real update code: {}, provided update code: {}", realUpdateCode, updateCode);
+            logger.debug("Validating update code for shortlink {}", id);
             if(realUpdateCode==null || !realUpdateCode.equals(updateCode)|| realUpdateCode.isEmpty()) {
                 throw new IllegalArgumentException("Invalid update code");
             }

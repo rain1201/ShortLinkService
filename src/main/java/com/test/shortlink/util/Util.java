@@ -1,7 +1,6 @@
 package com.test.shortlink.util;
 
 import java.security.MessageDigest;
-import java.util.Base64;
 import java.util.HexFormat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -10,6 +9,7 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class Util {
+    private static final String BASE62_ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
     private static int checkCodeLength=8;
     private static long workerId=0;
     private static long datacenterId=0;
@@ -69,7 +69,7 @@ public class Util {
             updateString=updateString.trim();
             md.update((realCode+updateString).trim().getBytes("UTF-8"));
             String expectedCode= HexFormat.of().formatHex(md.digest());
-            logger.info("Generated update code: {},[{}]", expectedCode,(realCode+updateString).trim());
+            logger.debug("Generated update code for update operation");
             return expectedCode;//.substring(0, checkCodeLength);
         }catch(Exception e){
             throw new RuntimeException(e);
@@ -118,11 +118,38 @@ public class Util {
         return x;
     }
     public static String idToStr(long id) {
-        Base64.Encoder encoder = Base64.getEncoder();
-        return encoder.encodeToString(longToBytes(id));
+        if (id < 0) {
+            throw new IllegalArgumentException("ID must be non-negative");
+        }
+        if (id == 0) {
+            return "0";
+        }
+
+        StringBuilder encoded = new StringBuilder();
+        long value = id;
+        while (value > 0) {
+            encoded.append(BASE62_ALPHABET.charAt((int) (value % BASE62_ALPHABET.length())));
+            value /= BASE62_ALPHABET.length();
+        }
+        return encoded.reverse().toString();
     }
+
     public static long strToId(String str) {
-        Base64.Decoder decoder = Base64.getDecoder();
-        return bytesToLong(decoder.decode(str));
+        if (str == null || str.isEmpty()) {
+            throw new IllegalArgumentException("ID must not be empty");
+        }
+
+        long value = 0;
+        for (int i = 0; i < str.length(); i++) {
+            int digit = BASE62_ALPHABET.indexOf(str.charAt(i));
+            if (digit < 0) {
+                throw new IllegalArgumentException("Invalid Base62 ID");
+            }
+            if (value > (Long.MAX_VALUE - digit) / BASE62_ALPHABET.length()) {
+                throw new IllegalArgumentException("Base62 ID is too large");
+            }
+            value = value * BASE62_ALPHABET.length() + digit;
+        }
+        return value;
     }
 }

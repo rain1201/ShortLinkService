@@ -5,6 +5,8 @@ import java.util.concurrent.Executor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 //import org.springframework.scheduling.annotation.Scheduled;
 //import org.springframework.stereotype.Component;
 
@@ -16,6 +18,7 @@ import io.lettuce.core.ScanArgs;
 
 //@Component
 public class CacheSyncService {
+    private static final Logger logger = LoggerFactory.getLogger(CacheSyncService.class);
     @Autowired
     StringRedisTemplate stringRedisTemplate;
     @Autowired
@@ -46,7 +49,9 @@ public class CacheSyncService {
                     try {
                         Thread.sleep(10);
                     } catch (InterruptedException e) {
-                        e.printStackTrace();
+                        Thread.currentThread().interrupt();
+                        logger.warn("Cache synchronization interrupted");
+                        return;
                     }
                 }
                 cursor=syncCommands.scan(cursor,scanArgs);

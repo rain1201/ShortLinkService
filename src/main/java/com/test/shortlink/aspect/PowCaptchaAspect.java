@@ -63,7 +63,7 @@ public class PowCaptchaAspect {
                 throw new IllegalArgumentException("Parameter "+powCaptcha.paramNames()[i]+" not found");
             }
         }
-        logger.info("Checking captcha for method {}, parameters: {}", methodSignature.getMethod().getName(), str);
+        logger.debug("Checking captcha for method {}", methodSignature.getMethod().getName());
         if(!Util.powCaptchaCheck(str+time, captcha)) {
             throw new IllegalArgumentException("Invalid captcha");
         }

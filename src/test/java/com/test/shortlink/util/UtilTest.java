@@ -107,13 +107,29 @@ class UtilTest {
 
     @Test
     void testIdToStr_Roundtrip() {
-        long[] testValues = {0L, 1L, 1000L, 123456789L, 9876543210L};
+        long[] testValues = {0L, 1L, 1000L, 123456789L, 9876543210L, Long.MAX_VALUE};
         for (long val : testValues) {
             String str = Util.idToStr(val);
             assertNotNull(str);
             long recovered = Util.strToId(str);
             assertEquals(val, recovered);
         }
+    }
+
+    @Test
+    void testBase62Encoding() {
+        assertEquals("0", Util.idToStr(0L));
+        assertEquals("10", Util.idToStr(62L));
+        assertEquals(62L, Util.strToId("10"));
+        assertFalse(Util.idToStr(123456789L).matches(".*[+/=].*"));
+    }
+
+    @Test
+    void testBase62RejectsInvalidIds() {
+        assertThrows(IllegalArgumentException.class, () -> Util.idToStr(-1L));
+        assertThrows(IllegalArgumentException.class, () -> Util.strToId(""));
+        assertThrows(IllegalArgumentException.class, () -> Util.strToId("abc-123"));
+        assertThrows(IllegalArgumentException.class, () -> Util.strToId("zzzzzzzzzzzzzzzzzzzzzzzzzz"));
     }
 
     @Test

@@ -8,7 +8,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.core.env.Environment;
 import org.springframework.http.MediaType;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
@@ -27,9 +26,6 @@ class ShortlinkControllerTest {
 
     @Mock
     private ShortlinkService shortlinkService;
-
-    @Mock
-    private Environment env;
 
     @InjectMocks
     private ShortlinkController shortlinkController;
@@ -98,7 +94,6 @@ class ShortlinkControllerTest {
 
     @Test
     void testHandleException() throws Exception {
-        when(env.getActiveProfiles()).thenReturn(new String[]{"dev"});
         when(shortlinkService.shorten(anyString(), anyLong(), anyString()))
                 .thenThrow(new IllegalArgumentException("Test Error"));
         long time = System.currentTimeMillis()/1000;
@@ -108,14 +103,13 @@ class ShortlinkControllerTest {
                 .param("captcha", Util.generatePowCaptcha("invalid1000"+time))
                 .param("time", String.valueOf(time))
                 .contentType(MediaType.APPLICATION_FORM_URLENCODED))
-                .andExpect(status().isInternalServerError())
-                .andExpect(jsonPath("$.code").value(500))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(40000))
                 .andExpect(jsonPath("$.message").value("Test Error"));
     }
 
     @Test
     void testHandleException_NonDevProfile() throws Exception {
-        when(env.getActiveProfiles()).thenReturn(new String[]{"prod"});
         when(shortlinkService.shorten(anyString(), anyLong(), anyString()))
                 .thenThrow(new IllegalArgumentException("Hidden error"));
         long time = System.currentTimeMillis()/1000;
@@ -125,9 +119,9 @@ class ShortlinkControllerTest {
                 .param("captcha", Util.generatePowCaptcha("invalid1000"+time))
                 .param("time", String.valueOf(time))
                 .contentType(MediaType.APPLICATION_FORM_URLENCODED))
-                .andExpect(status().isInternalServerError())
-                .andExpect(jsonPath("$.code").value(500))
-                .andExpect(jsonPath("$.message").value("Internal Server Error"));
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(40000))
+                .andExpect(jsonPath("$.message").value("Hidden error"));
     }
 
     @Test

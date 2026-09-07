@@ -9,7 +9,7 @@ public class ApiResponse<T> {
 
     public static <T> ApiResponse<T> success(T data) {
         ApiResponse<T> r = new ApiResponse<>();
-        r.code = 0;
+        r.code = ErrorCode.SUCCESS;
         r.message = "success";
         r.data = data;
         return r;
@@ -17,7 +17,7 @@ public class ApiResponse<T> {
 
     public static <T> ApiResponse<T> success(String message, T data) {
         ApiResponse<T> r = new ApiResponse<>();
-        r.code = 0;
+        r.code = ErrorCode.SUCCESS;
         r.message = message;
         r.data = data;
         return r;

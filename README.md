@@ -140,7 +140,7 @@ Create a new short link. Protected by PoW captcha.
 | `captcha`     | string  | (required)   | PoW nonce (SHA-1 hash with N leading 0s) |
 | `time`        | long    | (required)   | Unix timestamp of captcha generation     |
 
-**Response data:** The Base64-encoded short link ID.
+**Response data:** The Base62-encoded short link ID.
 
 ### `GET /{id}`
 
@@ -148,7 +148,7 @@ Redirect to the original URL. View count is incremented asynchronously.
 
 | Parameter | Location | Description                                |
 | --------- | -------- | ------------------------------------------ |
-| `id`      | Path     | Base64-encoded Snowflake ID of short link  |
+| `id`      | Path     | Base62-encoded Snowflake ID of short link  |
 
 ### `GET /getInfo/{id}`
 
@@ -182,6 +182,16 @@ Delete a short link. Requires the correct update code.
 | ------------ | ------ | ------------------------------------------------- |
 | `updateCode` | string | (required) The update code to authorize deletion   |
 
+### Response codes
+
+All JSON API responses use the following `code` values:
+
+| Code | Meaning |
+| ---- | ------- |
+| `0` | Success |
+| `40000` | Invalid request or business parameter |
+| `50000` | Internal server error |
+
 ## Configuration
 
 Key settings in `src/main/resources/application.yaml`:
@@ -199,7 +209,7 @@ Key settings in `src/main/resources/application.yaml`:
 
 ## Snowflake ID Format
 
-Short link IDs are 64-bit Snowflake IDs encoded in Base64:
+Short link IDs are non-negative 64-bit Snowflake IDs encoded in Base62:
 
 ```
 ┌────────────────────┬──────────┬──────────┬────────────┐

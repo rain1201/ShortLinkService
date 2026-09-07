@@ -5,7 +5,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Import;
-import org.springframework.context.annotation.Profile;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.test.shortlink.conf.DBConf;
 import com.test.shortlink.conf.ExecutorConf;
@@ -21,6 +22,7 @@ import jakarta.annotation.PostConstruct;
 @SpringBootApplication
 @Import({ Util.class, DBConf.class, RedisConf.class , ExecutorConf.class, MQServiceConf.class,JacksonConf.class})
 public class ShortlinkApplication {
+	private static final Logger logger = LoggerFactory.getLogger(ShortlinkApplication.class);
 	@Autowired 
 	DataSource dataSource;
 	public static void main(String[] args) {
@@ -49,9 +51,8 @@ public class ShortlinkApplication {
 								"    PRIMARY KEY (id)" + //
 								");");
 		} catch (Exception e) {
-			System.err.println("Error initializing database: " + e.getMessage());
-			e.printStackTrace();
-			//throw new RuntimeException(e);
+			logger.error("Database initialization failed", e);
+			throw new IllegalStateException("Database initialization failed", e);
 		}
 	}
 
