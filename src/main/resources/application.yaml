@@ -75,7 +75,11 @@ app:
     listener-num: 1
   # Redis 命令超时（秒）
   redis-command-timeout: 20
-
+springdoc:
+  swagger-ui:
+    enable: false
+  api-docs:
+    enabled: false
 ---
 spring:
   config:
@@ -83,4 +87,9 @@ spring:
       on-profile: dev
 app:
   redirect-code: 200
-  check-code-length: 8
+#  check-code-length: 8
+springdoc:
+  swagger-ui:
+    enable: true
+  api-docs:
+    enabled: true
