@@ -10,6 +10,7 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 @Repository
 public interface ShortlinkRepository extends JpaRepository<Shortlink, Long> {
+    java.util.List<Shortlink> findByUpdateCodeOrderByCreatedAtDesc(String updateCode);
     @Modifying
     @Transactional
     @Query("update Shortlink s set s.viewCount = :count where s.id = :id")

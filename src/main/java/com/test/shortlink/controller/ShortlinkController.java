@@ -13,11 +13,15 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import java.util.List;
+import java.util.Map;
 
 import com.test.shortlink.anno.PowCaptcha;
 import com.test.shortlink.dto.ApiResponse;
 import com.test.shortlink.dto.ErrorCode;
 import com.test.shortlink.service.ShortlinkService;
+import com.test.shortlink.service.AuthService;
+import com.test.shortlink.entity.Shortlink;
 import com.test.shortlink.util.Util;
 
 
@@ -25,6 +29,8 @@ import com.test.shortlink.util.Util;
 public class ShortlinkController {
     @Autowired
     private ShortlinkService shortlinkService;
+    @Autowired
+    private AuthService authService;
     @Value("${app.redirect-code:302}")
     private int redirectCode;
     @Value("${app.default-expire-after:1000000000}")
@@ -59,8 +65,13 @@ public class ShortlinkController {
                         @RequestParam(value="expireAfter", required=false) Long expireAfter,
                         @RequestParam(value="updateCode",defaultValue="") String updateCode,
                         @RequestParam("captcha") String captcha,
-                        @RequestParam("time") long time) {
+                        @RequestParam("time") long time,
+                        @RequestHeader(value="Authorization", required=false) String authorization) {
         long expireAfterVal = expireAfter != null ? expireAfter : defaultExpireAfter;
+        if (authorization != null && !authorization.isBlank()) {
+            authService.requireUser(authorization);
+            updateCode = authService.managementCodeFor(authorization);
+        }
         String id = shortlinkService.shorten(url, expireAfterVal, updateCode);
         return ApiResponse.success("Shortlink created", id);
     }
@@ -82,20 +93,42 @@ public class ShortlinkController {
         return ApiResponse.success(info);
     }
 
+    @GetMapping("/api/shortlinks")
+    public ApiResponse<List<Map<String,Object>>> myShortlinks(@RequestHeader(value="Authorization", required=false) String authorization) {
+        authService.requireUser(authorization);
+        String code = authService.managementCodeFor(authorization);
+        return ApiResponse.success(shortlinkService.listByUpdateCode(code).stream().map(this::shortlinkView).toList());
+    }
+
     @PostMapping("/update/{id}")
     public ApiResponse<String> update(@PathVariable String id,
                                        @RequestParam(value = "url",defaultValue = "") String url,
                                        @RequestParam(value = "expireAfter",defaultValue = "-1") long expireAfter,
-                                       @RequestParam("updateCode") String updateCode) {
+                                       @RequestParam(value="updateCode", defaultValue="") String updateCode,
+                                       @RequestHeader(value="Authorization", required=false) String authorization) {
+        if (authorization != null && !authorization.isBlank()) {
+            authService.requireUser(authorization);
+            updateCode = Util.generateUpdateCode(authService.managementCodeFor(authorization), id + url + expireAfter);
+        }
         String msg = shortlinkService.update(id, url, expireAfter, updateCode);
         return ApiResponse.success(msg);
     }
 
     @PostMapping("/delete/{id}")
     public ApiResponse<String> delete(@PathVariable String id,
-                                       @RequestParam("updateCode") String updateCode) {
+                                       @RequestParam(value="updateCode", defaultValue="") String updateCode,
+                                       @RequestHeader(value="Authorization", required=false) String authorization) {
+        if (authorization != null && !authorization.isBlank()) {
+            authService.requireUser(authorization);
+            updateCode = Util.generateUpdateCode(authService.managementCodeFor(authorization), id);
+        }
         String msg = shortlinkService.delete(id, updateCode);
         return ApiResponse.success(msg);
+    }
+
+    private Map<String,Object> shortlinkView(Shortlink link) {
+        return Map.of("id", Util.idToStr(link.getIdx()), "url", link.getOriginalUrl(),
+                "viewCount", link.getViewCount(), "createdAt", link.getCreatedAt(), "expireAfter", link.getExpireAfter());
     }
 
     @Profile("dev")

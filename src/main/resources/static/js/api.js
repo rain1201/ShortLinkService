@@ -1,5 +1,12 @@
 const Api = {
     baseUrl: '',
+    token: localStorage.getItem('shortlink_token'),
+    headers() { return this.token ? { Authorization: 'Bearer ' + this.token } : {}; },
+    async auth(path, username, password, captcha, time) { const p = new URLSearchParams({username, password}); if (captcha !== undefined) p.set('captcha', captcha); if (time !== undefined) p.set('time', String(time)); const r = await fetch('/api/auth/' + path, {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:p}); return handleJsonResponse(r); },
+    async managedList() { const r = await fetch('/api/shortlinks', {headers:this.headers()}); return handleJsonResponse(r); },
+    async logout() { const r = await fetch('/api/auth/logout', {method:'POST', headers:this.headers()}); return handleJsonResponse(r); },
+    async managedUpdate(id, url, expireAfter) { const p = new URLSearchParams({url, expireAfter:String(expireAfter)}); const r=await fetch('/update/'+encodeURIComponent(id), {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded', ...this.headers()}, body:p}); return handleJsonResponse(r); },
+    async managedDelete(id) { const r=await fetch('/delete/'+encodeURIComponent(id), {method:'POST', headers:this.headers()}); return handleJsonResponse(r); },
 
     async shorten(url, expireAfter, updateCode, captcha, time) {
         const params = new URLSearchParams();
@@ -11,7 +18,7 @@ const Api = {
 
         const resp = await fetch(this.baseUrl + '/shorten', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded', ...this.headers() },
             body: params
         });
 

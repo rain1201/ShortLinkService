@@ -296,6 +296,16 @@ Tests use the `test` profile with an in-memory HSQLDB and Mockito mocks — no e
 | `UtilTest`                    | URL validation, ID encode/decode, PoW, SnowFlakeId       |
 | `SnowFlakeIdTest`             | Uniqueness, monotonicity, concurrency, boundary values   |
 
+## User accounts and managed links
+
+The web UI now supports registration, login and logout. Authenticated users can create, list, edit and delete their own links through:
+
+- `POST /api/auth/register` and `POST /api/auth/login` (form fields: `username`, `password`)
+- `GET /api/shortlinks` lists the current user's links (send `Authorization: Bearer <token>`)
+- Authenticated requests reuse the existing `/shorten`, `/update/{id}` and `/delete/{id}` endpoints; the server supplies the user's special management code.
+
+Existing public shortening and update-code endpoints remain available for backwards compatibility. Sessions are stored in Redis with a configurable 24-hour TTL (`app.session-expire-seconds`).
+
 ## TODO
 
 - [ ] Replace HSQLDB with MySQL for production-grade persistence

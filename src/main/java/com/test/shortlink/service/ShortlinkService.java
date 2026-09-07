@@ -96,6 +96,10 @@ public class ShortlinkService {
         return Util.idToStr(idx);
     }
 
+    public java.util.List<Shortlink> listByUpdateCode(String updateCode) {
+        return shortlinkRepository.findByUpdateCodeOrderByCreatedAtDesc(updateCode);
+    }
+
     public CompletableFuture<Long> incrementViewCountAsync(long id,String ip, String userAgent) {
         return CompletableFuture.supplyAsync(() -> {
             //String cacheViewCountKey = RedisKeys.URL_VIEW_COUNT_KEY_PREFIX + id;

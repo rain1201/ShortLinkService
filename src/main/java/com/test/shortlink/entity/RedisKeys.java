@@ -8,4 +8,5 @@ public class RedisKeys {
     public static final String URL_CREATE_LOCK_KEY_PREFIX = "shortlink:createLock:"; 
     public static final String URL_CACHE_LIST = "shortlink:cacheList";
     public static final String URL_VIEW_MQ = "shortlink:view:mq";
+    public static final String SESSION_KEY_PREFIX = "shortlink:session:";
 }

@@ -1,4 +1,15 @@
 (function () {
+    const authResult = document.getElementById('authResult');
+    const loggedOut = document.getElementById('authLoggedOut');
+    const loggedIn = document.getElementById('authLoggedIn');
+    function authState(username) { loggedOut.classList.toggle('hidden', !!username); loggedIn.classList.toggle('hidden', !username); if (username) document.getElementById('currentUser').textContent = username; }
+    function authMessage(type, message) { authResult.className = 'result-box ' + type; authResult.textContent = message; authResult.classList.remove('hidden'); }
+    document.getElementById('loginForm').addEventListener('submit', async e => { e.preventDefault(); try { const time=Math.floor(Date.now()/1000); const d = await Api.auth('login', authUsername.value, authPassword.value, undefined, time); Api.token=d.token; localStorage.setItem('shortlink_token', d.token); localStorage.setItem('shortlink_user', d.username); authState(d.username); authMessage('success','登录成功'); loadLinks(); } catch (e) { authMessage('error', e.message); } });
+    document.getElementById('registerForm').addEventListener('submit', async e => { e.preventDefault(); try { const proof=await Captcha.generate(['username','password'],[registerUsername.value,registerPassword.value]); await Api.auth('register', registerUsername.value, registerPassword.value, proof.captcha, proof.time); authMessage('success','注册成功，请登录'); } catch (e) { authMessage('error', e.message); } });
+    document.getElementById('logoutBtn').addEventListener('click', async () => { await Api.logout().catch(()=>{}); Api.token=null; localStorage.removeItem('shortlink_token'); localStorage.removeItem('shortlink_user'); authState(null); });
+    async function loadLinks() { const box=document.getElementById('linksResult'); if (!Api.token) { box.textContent='请先登录'; return; } try { const links=await Api.managedList(); box.innerHTML=links.length ? links.map(x => '<div class="result-row"><a href="/'+x.id+'" target="_blank">/'+x.id+'</a> <span>'+x.url+'</span> <small>访问 '+x.viewCount+' 次</small> <button class="btn link-edit" data-id="'+x.id+'" data-url="'+encodeURIComponent(x.url)+'">编辑</button> <button class="btn btn-danger link-delete" data-id="'+x.id+'">删除</button></div>').join('') : '暂无短链'; box.querySelectorAll('.link-delete').forEach(b=>b.onclick=async()=>{if(confirm('确定删除该短链？')){await Api.managedDelete(b.dataset.id);loadLinks();}}); box.querySelectorAll('.link-edit').forEach(b=>b.onclick=async()=>{const url=prompt('新的目标 URL',decodeURIComponent(b.dataset.url));if(url){await Api.managedUpdate(b.dataset.id,url,0);loadLinks();}}); } catch(e) { box.textContent=e.message; } }
+    document.getElementById('refreshLinks').addEventListener('click', loadLinks);
+    if (Api.token) authState(localStorage.getItem('shortlink_user') || '当前用户');
     const tabs = document.querySelectorAll('.tab');
     const tabContents = document.querySelectorAll('.tab-content');
 

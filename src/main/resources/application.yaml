@@ -32,6 +32,7 @@ springdoc:
     enabled: false
   packages-to-scan: com.test.shortlink.controller
 app:
+  session-expire-seconds: 86400
   redirect-code: 302
   check-code-length: 8
   # 默认过期时间（秒），对应 Controller 中 expireAfter 默认值
