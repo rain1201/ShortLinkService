@@ -28,7 +28,6 @@ public class ShortlinkApplication {
 	}
 
 	@PostConstruct
-	@Profile("dev")
 	public void init() {
 		try(var conn = dataSource.getConnection()) {
 			var stmt = conn.createStatement();
@@ -49,9 +48,6 @@ public class ShortlinkApplication {
 								"    ts BIGINT NULL," + //
 								"    PRIMARY KEY (id)" + //
 								");");
-			// add example data
-			stmt.execute("INSERT INTO urls (idx, original_url, view_count, created_at, expire_after) VALUES (1, 'http://example.com', 0, UNIX_TIMESTAMP(), 100);");
-			stmt.execute("INSERT INTO urls (idx, original_url, view_count, created_at, expire_after) VALUES (2, 'http://test.com', 0, UNIX_TIMESTAMP(), 1000000);");
 		} catch (Exception e) {
 			//throw new RuntimeException(e);
 		}
