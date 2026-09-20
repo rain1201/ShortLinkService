@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jmeterTestPlan version="1.2" properties="5.0" jmeter="5.6.3">
+  <hashTree>
+    <TestPlan guiclass="TestPlanGui" testclass="TestPlan" testname="ShortLinkService Load Test" enabled="true">
+      <stringProp name="TestPlan.comments">Create, redirect, and inspect short links.</stringProp>
+      <boolProp name="TestPlan.functional_mode">false</boolProp>
+      <boolProp name="TestPlan.serialize_threadgroups">false</boolProp>
+      <elementProp name="TestPlan.user_defined_variables" elementType="Arguments" guiclass="ArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
+        <collectionProp name="Arguments.arguments">
+          <elementProp name="host" elementType="Argument"><stringProp name="Argument.name">host</stringProp><stringProp name="Argument.value">127.0.0.1</stringProp><stringProp name="Argument.metadata">=</stringProp></elementProp>
+          <elementProp name="port" elementType="Argument"><stringProp name="Argument.name">port</stringProp><stringProp name="Argument.value">8080</stringProp><stringProp name="Argument.metadata">=</stringProp></elementProp>
+        </collectionProp>
+      </elementProp>
+    </TestPlan>
+    <hashTree>
+      <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="Short link user journey" enabled="true">
+        <stringProp name="ThreadGroup.on_sample_error">continue</stringProp>
+        <elementProp name="ThreadGroup.main_controller" elementType="LoopController" guiclass="LoopControlPanel" testclass="LoopController" testname="Loop Controller" enabled="true">
+          <boolProp name="LoopController.continue_forever">false</boolProp><stringProp name="LoopController.loops">${__P(loops,10)}</stringProp>
+        </elementProp>
+        <stringProp name="ThreadGroup.num_threads">${__P(users,10)}</stringProp><stringProp name="ThreadGroup.ramp_time">${__P(ramp_up,30)}</stringProp>
+        <longProp name="ThreadGroup.start_time">0</longProp><longProp name="ThreadGroup.end_time">0</longProp><boolProp name="ThreadGroup.scheduler">false</boolProp><stringProp name="ThreadGroup.duration"></stringProp><stringProp name="ThreadGroup.delay"></stringProp>
+      </ThreadGroup>
+      <hashTree>
+        <HeaderManager guiclass="HeaderPanel" testclass="HeaderManager" testname="Common headers" enabled="true">
+          <collectionProp name="HeaderManager.headers">
+            <elementProp name="Content-Type" elementType="Header"><stringProp name="Header.name">Content-Type</stringProp><stringProp name="Header.value">application/x-www-form-urlencoded</stringProp></elementProp>
+            <elementProp name="User-Agent" elementType="Header"><stringProp name="Header.name">User-Agent</stringProp><stringProp name="Header.value">JMeter-ShortLinkLoadTest</stringProp></elementProp>
+          </collectionProp>
+        </HeaderManager><hashTree/>
+        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="POST /shorten" enabled="true">
+          <boolProp name="HTTPSampler.postBodyRaw">false</boolProp><stringProp name="HTTPSampler.domain">${host}</stringProp><stringProp name="HTTPSampler.port">${port}</stringProp><stringProp name="HTTPSampler.protocol">http</stringProp><stringProp name="HTTPSampler.path">/shorten</stringProp><stringProp name="HTTPSampler.method">POST</stringProp>
+          <boolProp name="HTTPSampler.follow_redirects">false</boolProp><boolProp name="HTTPSampler.auto_redirects">false</boolProp><boolProp name="HTTPSampler.use_keepalive">true</boolProp><boolProp name="HTTPSampler.DO_MULTIPART_POST">false</boolProp>
+          <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="Request arguments" enabled="true">
+            <collectionProp name="Arguments.arguments">
+              <elementProp name="url" elementType="HTTPArgument"><boolProp name="HTTPArgument.always_encode">true</boolProp><stringProp name="Argument.name">url</stringProp><stringProp name="Argument.value">${short_url}</stringProp><stringProp name="Argument.metadata">=</stringProp></elementProp>
+              <elementProp name="expireAfter" elementType="HTTPArgument"><boolProp name="HTTPArgument.always_encode">true</boolProp><stringProp name="Argument.name">expireAfter</stringProp><stringProp name="Argument.value">${expire_after}</stringProp><stringProp name="Argument.metadata">=</stringProp></elementProp>
+              <elementProp name="updateCode" elementType="HTTPArgument"><boolProp name="HTTPArgument.always_encode">true</boolProp><stringProp name="Argument.name">updateCode</stringProp><stringProp name="Argument.value"></stringProp><stringProp name="Argument.metadata">=</stringProp></elementProp>
+              <elementProp name="captcha" elementType="HTTPArgument"><boolProp name="HTTPArgument.always_encode">true</boolProp><stringProp name="Argument.name">captcha</stringProp><stringProp name="Argument.value">${captcha}</stringProp><stringProp name="Argument.metadata">=</stringProp></elementProp>
+              <elementProp name="time" elementType="HTTPArgument"><boolProp name="HTTPArgument.always_encode">true</boolProp><stringProp name="Argument.name">time</stringProp><stringProp name="Argument.value">${captcha_time}</stringProp><stringProp name="Argument.metadata">=</stringProp></elementProp>
+            </collectionProp>
+          </elementProp>
+        </HTTPSamplerProxy>
+        <hashTree>
+          <JSR223PreProcessor guiclass="TestBeanGUI" testclass="JSR223PreProcessor" testname="Generate unique URL and PoW captcha" enabled="true">
+            <stringProp name="scriptLanguage">groovy</stringProp><stringProp name="parameters"></stringProp><stringProp name="filename"></stringProp>
+            <stringProp name="script"><![CDATA[
+import java.security.MessageDigest
+def now = (System.currentTimeMillis() / 1000L) as long
+def uniqueUrl = "http://example.com/load-test/${ctx.getThreadNum()}-${now}-${vars.getIteration()}"
+def expireAfter = '3600'
+def base = "url${uniqueUrl}expireAfter${expireAfter}${now}"
+def difficulty = Integer.parseInt(props.get('pow_difficulty', '2'))
+def nonce = 0
+while (true) {
+    def digest = MessageDigest.getInstance('SHA-1').digest((base + nonce).getBytes('UTF-8'))
+    boolean valid = true
+    for (int i = 0; i < difficulty; i++) {
+        if (digest[i] != 0) { valid = false; break }
+    }
+    if (valid) break
+    nonce++
+}
+vars.put('short_url', uniqueUrl)
+vars.put('expire_after', expireAfter)
+vars.put('captcha_time', String.valueOf(now))
+vars.put('captcha', String.valueOf(nonce))
+            ]]></stringProp>
+          </JSR223PreProcessor>
+          <RegexExtractor guiclass="RegexExtractorGui" testclass="RegexExtractor" testname="Extract short link ID" enabled="true">
+            <stringProp name="RegexExtractor.useHeaders">false</stringProp><stringProp name="RegexExtractor.refname">short_id</stringProp><stringProp name="RegexExtractor.regex">&quot;data&quot;\s*:\s*&quot;([^&quot;]+)&quot;</stringProp><stringProp name="RegexExtractor.template">$1$</stringProp><stringProp name="RegexExtractor.default">NOT_FOUND</stringProp><stringProp name="RegexExtractor.match_number">1</stringProp>
+          </RegexExtractor>
+          <ResponseAssertion guiclass="AssertionGui" testclass="ResponseAssertion" testname="Create succeeded" enabled="true">
+            <collectionProp name="Asserion.test_strings"><stringProp name="49586">&quot;code&quot;:0</stringProp></collectionProp><stringProp name="Assertion.test_field">Assertion.response_data</stringProp><boolProp name="Assertion.assume_success">false</boolProp><intProp name="Assertion.test_type">2</intProp>
+          </ResponseAssertion>
+        </hashTree>
+        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="GET /{id} redirect" enabled="true">
+          <boolProp name="HTTPSampler.follow_redirects">false</boolProp><boolProp name="HTTPSampler.auto_redirects">false</boolProp><boolProp name="HTTPSampler.use_keepalive">true</boolProp><stringProp name="HTTPSampler.domain">${host}</stringProp><stringProp name="HTTPSampler.port">${port}</stringProp><stringProp name="HTTPSampler.protocol">http</stringProp><stringProp name="HTTPSampler.path">/${short_id}</stringProp><stringProp name="HTTPSampler.method">GET</stringProp>
+          <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="Request arguments" enabled="true"><collectionProp name="Arguments.arguments"/></elementProp>
+        </HTTPSamplerProxy><hashTree/>
+        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="GET /getInfo/{id}" enabled="true">
+          <boolProp name="HTTPSampler.follow_redirects">false</boolProp><boolProp name="HTTPSampler.auto_redirects">false</boolProp><boolProp name="HTTPSampler.use_keepalive">true</boolProp><stringProp name="HTTPSampler.domain">${host}</stringProp><stringProp name="HTTPSampler.port">${port}</stringProp><stringProp name="HTTPSampler.protocol">http</stringProp><stringProp name="HTTPSampler.path">/getInfo/${short_id}</stringProp><stringProp name="HTTPSampler.method">GET</stringProp>
+          <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="Request arguments" enabled="true"><collectionProp name="Arguments.arguments"/></elementProp>
+        </HTTPSamplerProxy>
+        <hashTree><ResponseAssertion guiclass="AssertionGui" testclass="ResponseAssertion" testname="Info succeeded" enabled="true"><collectionProp name="Asserion.test_strings"><stringProp name="49586">&quot;code&quot;:0</stringProp></collectionProp><stringProp name="Assertion.test_field">Assertion.response_data</stringProp><boolProp name="Assertion.assume_success">false</boolProp><intProp name="Assertion.test_type">2</intProp></ResponseAssertion></hashTree>
+      </hashTree>
+    </hashTree>
+  </hashTree>
+</jmeterTestPlan>
