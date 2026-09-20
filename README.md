@@ -104,6 +104,18 @@ java -jar target/shortlink-0.0.1-SNAPSHOT.jar --spring.profiles.active=dev
 
 Navigate to [http://localhost:8080](http://localhost:8080) in your browser.
 
+### 5. Actuator monitoring endpoints (dev profile only)
+
+The application exposes the following Actuator endpoints for performance analysis:
+
+- `GET /actuator/health` – service health status
+- `GET /actuator/info` – application information
+- `GET /actuator/metrics` – available Micrometer metrics
+- `GET /actuator/metrics/http.server.requests` – HTTP request metrics
+- `GET /actuator/metrics/hikaricp.connections.pending` – pending database connection requests
+
+These endpoints are exposed only when the `dev` profile is active. Health details remain hidden by default.
+
 ## API Reference
 
 All responses use the unified `ApiResponse<T>` format:

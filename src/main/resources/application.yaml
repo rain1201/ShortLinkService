@@ -21,6 +21,11 @@ spring:
     ssl: false
 server:
   port: 8080
+  tomcat:
+    threads:
+      max: 200
+      min-spare: 20
+    accept-count: 200
 logging:
   level:
     root: INFO
@@ -92,3 +97,17 @@ springdoc:
     enable: true
   api-docs:
     enabled: true
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: never
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true

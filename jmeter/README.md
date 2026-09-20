@@ -3,10 +3,10 @@
 当前仓库也提供了更轻量的 Python 压测脚本：`scripts/load_test.py`。如果只需要快速验证并发能力，优先使用 Python 脚本即可。
 
 ```powershell
-python .\scripts\load_test.py --users 50 --loops 20 --ramp-up 60
+python .\scripts\load_test.py --users 50 --actions 200 --seed-links 100 --ramp-up 60
 ```
 
-默认每创建 1 条短链执行 20 次重定向访问，并每 5 次重定向查询一次详情，读请求远大于创建请求。可使用 `--reads-per-write` 和 `--info-every` 调整比例。脚本只使用 Python 标准库，无需额外安装依赖；它会输出每个接口的请求数、错误率、平均响应时间、P95 和最大响应时间。
+脚本先创建短链池，再进入稳态流量阶段。默认稳态比例为：95% 重定向、4% 详情查询、1% 创建短链；可通过 `--redirect-ratio`、`--info-ratio`、`--create-ratio` 调整。`--think-time-ms` 可增加用户请求间隔，脚本只使用 Python 标准库，无需额外安装依赖；它会输出每个接口的请求数、错误率、平均响应时间、P95 和最大响应时间。
 
 压测计划 shortlink-load-test.jmx 覆盖完整用户链路：
 
